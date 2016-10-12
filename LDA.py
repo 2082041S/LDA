@@ -1,22 +1,29 @@
 import numpy
+from scipy import special
 
 
-def index_between_bounds(index, topic_index , vocab):
+def index_between_bounds(index, topic_index):
     greater_than_lower_bound = vocab_length * topic_index / number_of_topics <= index
     lower_than_upper_bound = index < vocab_length * (topic_index + 1) / number_of_topics
     between_bounds = greater_than_lower_bound and lower_than_upper_bound
     return between_bounds
 
 
-def generate_topic_distribution_of_words(topics, vocab, random):
+def generate_word_distribution_of_topics(words_in_document):
+    word_topic_dict = {}
+    for word in words_in_document:
+        word_topic_dict[word] = numpy.random.uniform(low=0.0, high=1.0, size = 5)
+    return word_topic_dict
+
+def generate_topic_distribution_of_words(random):
     topic_word_distribution = []
     sum_of_distributions = []
 
-    for topic_index in range(topics):
+    for topic_index in range(number_of_topics):
         topic_word_distribution.append([])
         sum_of_word_probabilities = 0
 
-        for word_index in range(vocab):
+        for word_index in range(vocab_length):
             randint = numpy.random.random()
 
             # generate random word_topic distribution
@@ -24,7 +31,7 @@ def generate_topic_distribution_of_words(topics, vocab, random):
                 topic_word_distribution[topic_index].append(randint)
                 sum_of_word_probabilities += randint
             # generate topics divergent: topic 1 is determined by words 0 to 3 topic topic 2 by words 4 to7
-            elif index_between_bounds(word_index, topic_index,vocab):
+            elif index_between_bounds(word_index, topic_index):
                 topic_word_distribution[topic_index].append(randint)
                 sum_of_word_probabilities += randint
             else:
@@ -32,8 +39,8 @@ def generate_topic_distribution_of_words(topics, vocab, random):
         sum_of_distributions.append(sum_of_word_probabilities)
 
     # normalise the distribution
-    for topic_index in range(topics):
-        for word_index in range(vocab):
+    for topic_index in range(number_of_topics):
+        for word_index in range(vocab_length):
             topic_word_distribution[topic_index][word_index] = topic_word_distribution[topic_index][word_index] / \
                                                                sum_of_distributions[topic_index]
     return topic_word_distribution
@@ -47,15 +54,16 @@ vocabulary = ["president", "vote", "corruption", "government",
               "actor", "movie", "TV", "cinema",
               "goal", "football", "goalkeeper", "penalty"]
 vocab_length = len(vocabulary)
-beta = generate_topic_distribution_of_words(number_of_topics, vocab_length, False)
-alpha = 0.1  # concentration of topics per document
+beta = generate_topic_distribution_of_words(False)  # TODO change it to numpy array
+
+alpha = 0.1  # concentration of topics per document get ALPHA UPDATE
 number_of_documents = 100  # documents
 words_per_document = 50
-list_of_documents = []
+dictionary_of_documents = {}
 
 # for each document
 for i in range(number_of_documents):
-    document_dict = {"id": i}
+    document_dict = {}
     # sample theta ~ Dir(alpha,alpha,alpha,alpha)
     theta = numpy.random.dirichlet([alpha, alpha, alpha, alpha, alpha])
     # error check
@@ -74,56 +82,87 @@ for i in range(number_of_documents):
         else:
             document_dict[sampled_word] += 1
 
-    list_of_documents.append(document_dict)
+    dictionary_of_documents[i] = document_dict
 
-# for document in list_of_documents:
-#   print document
+#for document in dictionary_of_documents:
+# print dictionary_of_documents[document]
 
 # Implement LDA
 # Step 1  Initialise
-beta = generate_topic_distribution_of_words(number_of_topics, vocab_length, True)
+beta = generate_topic_distribution_of_words(True) # topic X vocab_length
+word_in_vocab_dict = {}
+for index in range(vocab_length):
+    word_in_vocab_dict[vocabulary[index]] = index;
+
 document_parameters = {}
 # for each document create document_per_topic_distribution and word_per topic distribution
-for document in list_of_documents:
-    random_list = numpy.random.uniform(low=0.0, high=1.0, size=5)
-    topic_distribution_of_document = [i / sum(random_list) for i in random_list]  # Gamma
+for id in range(len(dictionary_of_documents)):
+    gamma = numpy.random.uniform(low=0.0, high=1.0, size = 5)
     # By reversing parameters of function we get wor_per_topic distribution
-    word_per_topic_distribution = generate_topic_distribution_of_words(vocab_length, number_of_topics, True)  # O|
-    document_parameters[document["id"]] = [topic_distribution_of_document, word_per_topic_distribution]
+    phi = generate_word_distribution_of_topics(dictionary_of_documents[id])
+    document_parameters[id] = [gamma, phi]
 
-# print document_parameters
+
+# print document_parameters[0]
 
 # Step 2 Run algorithm
 # loop over each document
 for n in range(number_of_documents):
-    document_id = list_of_documents[n]["id"]
-    topic_distribution_of_document = document_parameters[document_id][0]
-    word_per_topic_distribution = document_parameters[document_id][1]
-    # for each word in document
-    i = 0
-    for i in range(len(list_of_documents[n])):
-        i += 1
-        # TODO calculate exp
-        exp = 1
+    gamma = document_parameters[n][0] # document per topic distribution
+    document = dictionary_of_documents[n]
+    Ln = {}
+    phi = {}
+
+    # for each word recalculate topic probability
+    for word in document:
+        Ln[word] =numpy.zeros(number_of_topics)
+        phi[word] = numpy.zeros(number_of_topics)
+
         for j in range(number_of_topics):
-            # for each word recalculate probability.
-            # Eq (6):
-            word_per_topic_distribution[i][j] = beta[j][i] * exp
+            Ln[word][j] = (numpy.log(beta[j][word_in_vocab_dict[word]]) + special.psi(gamma[j]) - special.psi(sum(gamma)))
+
+        B = - numpy.max(Ln[word])
+        exponential_Lnj_plus_B =[]
+
+        for j in range(number_of_topics):
+            exponential_Lnj_plus_B.append(numpy.exp(Ln[word][j] + B))
+
+        for j in range(number_of_topics):
+            phi[word][j] = exponential_Lnj_plus_B[j] / numpy.sum(exponential_Lnj_plus_B)
+
 
     # for each document recalculate topic distribution
     for j in range(number_of_topics):
-        sum = 0
+        topic_probability = 0
 
-        for v in range(len(word_per_topic_distribution)):
-            word = vocabulary[v]
-            if word in list_of_documents[n]:
-                word_probability = word_per_topic_distribution[v][j]
-                word_count = list_of_documents[n][word]
-                sum += word_probability * word_count
+        for word in document:
+            word_probability = phi[word][j]
+            word_count = document[word]
+            topic_probability += word_probability * word_count
 
-        # Eq (7):
-        topic_distribution_of_document[j] = alpha + sum
+        gamma[j] = alpha + topic_probability
 
     # update document parameters
-    document_parameters[document_id][0] = topic_distribution_of_document
-    document_parameters[document_id][1] = word_per_topic_distribution
+    document_parameters[n][0] = gamma
+    document_parameters[n][1] = phi
+
+# initialise new beta
+for j in range(number_of_topics):
+    for i in range(vocab_length):
+        beta[j][i] = 0.01 # Epsilon
+
+# recalculate beta
+for n in range(number_of_documents):
+    phi = document_parameters[n][1]
+
+    for word in dictionary_of_documents[n]:
+
+        for j in range(number_of_topics):
+            beta[j][word_in_vocab_dict[word]] += phi[word][j]
+
+for j in range(number_of_topics):
+    topic_sum = sum(beta[j])
+    for i in range(vocab_length):
+        beta[j][i] /= topic_sum
+
+print beta
