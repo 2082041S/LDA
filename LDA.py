@@ -1,7 +1,7 @@
 import numpy
 import time
 from scipy import special
-
+from sklearn.preprocessing import normalize
 
 def index_between_bounds(index, topic_index):
     greater_than_lower_bound = vocab_length * topic_index / number_of_topics <= index
@@ -41,10 +41,7 @@ def generate_topic_distribution_of_words(random):
         sum_of_distributions.append(sum_of_word_probabilities)
 
     # normalise the distribution
-    for topic_index in range(number_of_topics):
-        for word_index in range(vocab_length):
-            topic_word_distribution[topic_index][word_index] = topic_word_distribution[topic_index][word_index] / \
-                                                               sum_of_distributions[topic_index]
+    topic_word_distribution = normalize(topic_word_distribution, axis=1, norm="l1")
     return topic_word_distribution
 
 
@@ -125,7 +122,7 @@ vocabulary = ["president", "vote", "corruption", "government",
               "goal", "football", "goalkeeper", "penalty"]
 vocab_length = len(vocabulary)
 initial_beta = generate_topic_distribution_of_words(False)
-corpus_size = 3
+corpus_size = 5
 corpus=[]
 alpha_collection=[]
 number_of_words = generate_corpus()
@@ -134,7 +131,7 @@ print "Preprocessing takes ", end_preprocess - start, " seconds"
 
 # Implement LDA
 # Step 1  Initialise
-beta = generate_topic_distribution_of_words(True)  # topic X vocab_length
+random_beta = generate_topic_distribution_of_words(True)  # topic X vocab_length
 word_in_vocab_dict = {}
 for index in range(vocab_length):
     word_in_vocab_dict[vocabulary[index]] = index;
@@ -148,9 +145,10 @@ for c in range(corpus_size):
 # Step 2 Run algorithm
 iterations = 100
 epsilon = 0.01
+# initialise new beta
+beta = numpy.full((number_of_topics, vocab_length), epsilon)
+
 for it in range(iterations):
-    # initialise new beta
-    new_beta = numpy.full((number_of_topics,vocab_length),epsilon)
     for c in range(corpus_size):
         dictionary_of_documents = corpus[c]
         document_parameters = list_of_document_parameters[c]
@@ -164,14 +162,14 @@ for it in range(iterations):
                 Ln[word] = numpy.zeros(number_of_topics)
                 phi[word] = numpy.zeros(number_of_topics)
                 for j in range(number_of_topics):
-                    Ln[word][j] = (numpy.log(beta[j][word_in_vocab_dict[word]]) + special.psi(gamma[j]) - special.psi(sum(gamma)))
+                    Ln[word][j] = (numpy.log(random_beta[j][word_in_vocab_dict[word]]) + special.psi(gamma[j]) - special.psi(sum(gamma)))
                 B = - numpy.max(Ln[word])
                 exponential_Lnj_plus_B = []
                 for j in range(number_of_topics):
                     exponential_Lnj_plus_B.append(numpy.exp(Ln[word][j] + B))
                 for j in range(number_of_topics):
                     phi[word][j] = exponential_Lnj_plus_B[j] / numpy.sum(exponential_Lnj_plus_B)
-                    new_beta[j][word_in_vocab_dict[word]] += phi[word][j]
+                    beta[j][word_in_vocab_dict[word]] += phi[word][j]
             # for each document recalculate topic distribution Eq (7)
             calculate_gamma(alpha_collection[c], document)
 
@@ -179,12 +177,8 @@ for it in range(iterations):
             document_parameters[n][0] = gamma
             document_parameters[n][1] = phi
 
-        beta_difference = 0
-        # Normalise new computed beta and assign it to beta
-        for j in range(number_of_topics):
-            topic_sum = sum(new_beta[j])
-            for i in range(vocab_length):
-                beta[j][i] = new_beta[j][i] / topic_sum
-                beta_difference += beta[j][i] - initial_beta[j][i]
-        #print numpy.abs(beta_difference)
+    # Normalise new computed beta and assign it to beta
+    beta = normalize(beta, axis=1, norm ="l1")
+    beta_difference = abs(numpy.sum(numpy.subtract(beta,initial_beta)))
+    #print numpy.abs(beta_difference)
 print_evaluation_criteria()
