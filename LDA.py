@@ -3,6 +3,7 @@ import time
 from scipy import special
 from sklearn.preprocessing import normalize
 
+
 def index_between_bounds(index, topic_index):
     greater_than_lower_bound = vocab_length * topic_index / number_of_topics <= index
     lower_than_upper_bound = index < vocab_length * (topic_index + 1) / number_of_topics
@@ -49,8 +50,10 @@ def generate_corpus():
     words_generated = 0
     for c in range(corpus_size):
         alpha_collection.append(numpy.random.uniform(low=0.0, high=1.0, size=5))
-        number_of_documents = numpy.random.randint(1, 100)  # documents
-        words_per_document = numpy.random.randint(1, 100)
+        number_of_documents = 50
+        words_per_document = 50
+        #number_of_documents = numpy.random.randint(1, 100)  # documents
+        #words_per_document = numpy.random.randint(1, 100)
         words_generated += number_of_documents * words_per_document
         print "corpus ", c , " has ", number_of_documents, " documents each containing ",\
             words_per_document, " words with alpha equal to: ",alpha_collection[c]
@@ -121,7 +124,7 @@ vocabulary = ["president", "vote", "corruption", "government",
               "actor", "movie", "TV", "cinema",
               "goal", "football", "goalkeeper", "penalty"]
 vocab_length = len(vocabulary)
-initial_beta = generate_topic_distribution_of_words(False)
+initial_beta = generate_topic_distribution_of_words(True)
 corpus_size = 5
 corpus=[]
 alpha_collection=[]
@@ -145,14 +148,16 @@ for c in range(corpus_size):
 # Step 2 Run algorithm
 iterations = 100
 epsilon = 0.01
-# initialise new beta
-beta = numpy.full((number_of_topics, vocab_length), epsilon)
 
+beta = random_beta
 for it in range(iterations):
+    # initialise new beta
+    # update phi and gamma 5 times
+    new_beta = numpy.full((number_of_topics, vocab_length), epsilon)
     for c in range(corpus_size):
         dictionary_of_documents = corpus[c]
         document_parameters = list_of_document_parameters[c]
-        for n in range(len(dictionary_of_documents)):
+        for n in dictionary_of_documents:
             gamma = document_parameters[n][0]  # document per topic distribution
             document = dictionary_of_documents[n]
             Ln = {}
@@ -162,14 +167,15 @@ for it in range(iterations):
                 Ln[word] = numpy.zeros(number_of_topics)
                 phi[word] = numpy.zeros(number_of_topics)
                 for j in range(number_of_topics):
-                    Ln[word][j] = (numpy.log(random_beta[j][word_in_vocab_dict[word]]) + special.psi(gamma[j]) - special.psi(sum(gamma)))
+                    Ln[word][j] = (numpy.log(beta[j][word_in_vocab_dict[word]]) + special.psi(gamma[j]) - special.psi(sum(gamma)))
                 B = - numpy.max(Ln[word])
                 exponential_Lnj_plus_B = []
                 for j in range(number_of_topics):
                     exponential_Lnj_plus_B.append(numpy.exp(Ln[word][j] + B))
+                exponential_sum = numpy.sum(exponential_Lnj_plus_B)
                 for j in range(number_of_topics):
-                    phi[word][j] = exponential_Lnj_plus_B[j] / numpy.sum(exponential_Lnj_plus_B)
-                    beta[j][word_in_vocab_dict[word]] += phi[word][j]
+                    phi[word][j] = exponential_Lnj_plus_B[j] / exponential_sum
+                    new_beta[j][word_in_vocab_dict[word]] += phi[word][j] * document[word]
             # for each document recalculate topic distribution Eq (7)
             calculate_gamma(alpha_collection[c], document)
 
@@ -178,7 +184,20 @@ for it in range(iterations):
             document_parameters[n][1] = phi
 
     # Normalise new computed beta and assign it to beta
-    beta = normalize(beta, axis=1, norm ="l1")
-    beta_difference = abs(numpy.sum(numpy.subtract(beta,initial_beta)))
-    #print numpy.abs(beta_difference)
+    new_beta = normalize(new_beta, axis=1, norm ="l1")
+    beta_difference = numpy.sum(abs(numpy.subtract(new_beta, beta)))
+    beta = new_beta.copy()
+    #print beta[0][:10]
+    print numpy.abs(beta_difference)
+
+beta_difference = numpy.sum(abs(numpy.subtract(beta, initial_beta)))
+print numpy.abs(beta_difference)
+for topic in beta:
+    for word in vocabulary:
+        if topic[word_in_vocab_dict[word]]>0.1:
+            print word, " ", topic[word_in_vocab_dict[word]]
+for topic in initial_beta:
+    for word in vocabulary:
+        if topic[word_in_vocab_dict[word]]>0.1:
+            print word, " ", topic[word_in_vocab_dict[word]]
 print_evaluation_criteria()
