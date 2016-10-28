@@ -9,6 +9,7 @@ from LDA_Object import get_initial_beta
 from LDA_Object import ldaObject
 from LDA_Object import get_word_in_vocab_dict
 
+
 class my_thread (threading.Thread):
     def __init__(self, threadID, name, lda):
         threading.Thread.__init__(self)
@@ -20,7 +21,7 @@ class my_thread (threading.Thread):
         print self.name, self.threadID, "started"
 
     def run_LDA_once(self):
-        self.lda.run_LDA(1,5)
+        self.lda.run_LDA(1,1)
         #print self.name, self.threadID, "finished"
 
     def update_beta(self, beta):
@@ -31,8 +32,8 @@ class my_thread (threading.Thread):
 
 start_time = time.time()
 threads=[]
-corpus_size = 5
-iterations = 20
+corpus_size = 4
+iterations = 100
 initial_beta = get_initial_beta()
 number_of_topics = get_number_of_topics()
 vocabulary = get_vocabulary()
@@ -57,15 +58,16 @@ for it in range(iterations):
         t.update_beta(beta)
 
 beta_difference = np.sum(abs(np.subtract(beta, initial_beta)))
-print np.abs(beta_difference)
+print beta_difference
 end_time = time.time()
 # for topic in beta:
 #     for word in vocabulary:
-#         if topic[word_in_vocab_dict[word]]>0.1:
+#         if topic[word_in_vocab_dict[word]]>0.05:
 #             print word, " ", topic[word_in_vocab_dict[word]]
+# print "**********************"
 # for topic in initial_beta:
 #     for word in vocabulary:
-#         if topic[word_in_vocab_dict[word]]>0.1:
+#         if topic[word_in_vocab_dict[word]]>0.05:
 #             print word, " ", topic[word_in_vocab_dict[word]]
 
 print "Finished in ",end_time-start_time,"seconds"

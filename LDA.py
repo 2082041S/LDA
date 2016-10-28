@@ -125,7 +125,7 @@ vocabulary = ["president", "vote", "corruption", "government",
               "goal", "football", "goalkeeper", "penalty"]
 vocab_length = len(vocabulary)
 initial_beta = generate_topic_distribution_of_words(True)
-corpus_size = 5
+corpus_size = 4
 corpus=[]
 alpha_collection=[]
 number_of_words = generate_corpus()
@@ -188,16 +188,16 @@ for it in range(iterations):
     beta_difference = numpy.sum(abs(numpy.subtract(new_beta, beta)))
     beta = new_beta.copy()
     #print beta[0][:10]
-    print numpy.abs(beta_difference)
+    #print numpy.abs(beta_difference)
 
 beta_difference = numpy.sum(abs(numpy.subtract(beta, initial_beta)))
-print numpy.abs(beta_difference)
-for topic in beta:
-    for word in vocabulary:
-        if topic[word_in_vocab_dict[word]]>0.1:
-            print word, " ", topic[word_in_vocab_dict[word]]
-for topic in initial_beta:
-    for word in vocabulary:
-        if topic[word_in_vocab_dict[word]]>0.1:
-            print word, " ", topic[word_in_vocab_dict[word]]
+# print numpy.abs(beta_difference)
+# for topic in beta:
+#     for word in vocabulary:
+#         if topic[word_in_vocab_dict[word]]>0.1:
+#             print word, " ", topic[word_in_vocab_dict[word]]
+# for topic in initial_beta:
+#     for word in vocabulary:
+#         if topic[word_in_vocab_dict[word]]>0.1:
+#             print word, " ", topic[word_in_vocab_dict[word]]
 print_evaluation_criteria()
