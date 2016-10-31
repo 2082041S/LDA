@@ -20,18 +20,24 @@ def Manager():
     return m 
 
 
-class Beta(object):
+class LDA(object):
 
     def __init__(self, number_of_topics, vocabulary_length):
-        self._beta = np.zeros((number_of_topics, vocabulary_length))
-        self.counter =0
+        self.new_beta = np.zeros((number_of_topics, vocabulary_length))
+        self.current_beta = np.zeros((number_of_topics, vocabulary_length)) # zeros to test against it
+        self.counter = 0
 
-    def update(self, lda_object):
-        self._beta += lda_object.beta
+    def add_to_new_beta(self, beta):
+        self.new_beta += beta
 
+    def get_new_beta(self):
+        return self.new_beta
 
-    def get_beta(self):
-        return self._beta
+    def get_current_beta(self):
+        return self.current_beta
+
+    def set_current_beta(self,beta):
+        self.current_beta = beta
 
     def increment_counter(self):
         self.counter += 1
@@ -42,35 +48,41 @@ class Beta(object):
     def get_counter(self):
         return self.counter
 
-MyManager.register('Beta', Beta)
+MyManager.register('LDA', LDA)
 
 
-def update(counter_proxy, lda_object, number_of_processes, iterations, l):
+def update(lda_proxy, lda_object, number_of_processes, iterations, l):
 
     while iterations > 0:
+
         current_process = multiprocessing.current_process()
         wait_counter =0
+        current_beta = lda_proxy.get_current_beta()
+        if abs(current_beta[0][0] -0.0) > 0.001:
+            lda_object.update_beta(lda_proxy.get_current_beta())
         lda_object.run_LDA()
         l.acquire()
-        counter_proxy.increment_counter()
-        counter_proxy.update(lda_object)  # computation
+        lda_proxy.increment_counter()
+        lda_proxy.add_to_new_beta(lda_object.beta)  # computation
         l.release()
 
-        while counter_proxy.get_counter() < number_of_processes:
+        while lda_proxy.get_counter() < number_of_processes:
             pass
             #print multiprocessing.current_process().name
             #print number_of_processes," ", multiprocessing.current_process()," ",counter_proxy.get_counter()
 
         # compute new beta
-        computed_beta = normalize(counter_proxy.get_beta(), axis=1, norm="l1")
-        lda_object = ldaObject(computed_beta, {}, True)
+        computed_beta = normalize(lda_proxy.get_new_beta(), axis=1, norm="l1")
+        lda_proxy.set_current_beta(computed_beta)
 
         l.acquire()
-        counter_proxy.update_counter(0)
+        lda_proxy.update_counter(0)
         iterations -= 1
+        #print iterations
         l.release()
 
-    return counter_proxy
+    return lda_proxy
+
 
 def main():
     start_time = time.time()
@@ -82,7 +94,7 @@ def main():
     word_in_vocab_dict = get_word_in_vocab_dict()
 
     manager = Manager()
-    beta = manager.Beta(number_of_topics, len(vocabulary))
+    lda = manager.LDA(number_of_topics, len(vocabulary))
     m = multiprocessing.Manager()
     l = m.Lock()
     computed_beta=[[]]
@@ -90,12 +102,12 @@ def main():
     pool = multiprocessing.Pool(corpus_size)
     for i in range(corpus_size):
         lda_object = ldaObject([[]], {}, True)
-        pool.apply_async(func=update, args=(beta, lda_object, corpus_size, iterations, l))
+        pool.apply_async(func=update, args=(lda, lda_object, corpus_size, iterations, l))
     pool.close()
     pool.join()
 
-    computed_beta = normalize(beta.get_beta(), axis=1, norm="l1")
-    beta_difference = np.sum(abs(np.subtract(computed_beta, initial_beta)))
+    #computed_beta = normalize(lda.get_new_beta(), axis=1, norm="l1")
+    beta_difference = np.sum(abs(np.subtract(lda.get_current_beta(), initial_beta)))
     print beta_difference
     end_time = time.time()
     print "Finished in ", end_time - start_time, "seconds"
