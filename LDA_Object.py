@@ -125,7 +125,7 @@ def calculate_new_alpha(alpha,document_parameters):
     for i in range (K):
         for d in range (M):
             g_sum_gamma[i] += special.psi(document_parameters[d][0][i]) - special.psi(sum(document_parameters[d][0]))
-        g[i] = M *(special.psi(sum(alpha)) - special.psi(alpha[i] )) + g_sum_gamma[i]
+        g[i] = M *(special.psi(sum(alpha)) - special.psi(alpha[i] ) + g_sum_gamma[i])
 
     #H = M * (special.polygamma(1, sum(alpha)) - np.diag(special.polygamma(1, alpha)))
     z = M * special.polygamma(1, sum(alpha))
@@ -134,6 +134,8 @@ def calculate_new_alpha(alpha,document_parameters):
 
     for i in range(K):
         new_alpha[i] = alpha[i] - ((g[i]-c)/h[i])
+
+    print new_alpha
 
     return new_alpha
 
