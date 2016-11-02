@@ -115,12 +115,28 @@ def calculate_gamma(alpha, document, phi):
     return gamma
 
 
-def calculate_new_alpha(old_alpha):
-    c = 0
-    alpha_gradient = np.gradient(old_alpha)
-    #print alpha_gradient
-    return old_alpha
-    #c += gradient/value
+def calculate_new_alpha(alpha,document_parameters):
+    new_alpha = np.zeros(number_of_topics)
+    #document parameters contains gamma  and phi values for each document([0] for gamma)
+    M = len(document_parameters)
+    K = number_of_topics
+    g = np.zeros(K)
+    g_sum_gamma = np.zeros(K)
+    for i in range (K):
+        for d in range (M):
+            g_sum_gamma[i] += special.psi(document_parameters[d][0][i]) - special.psi(sum(document_parameters[d][0]))
+        g[i] = M *(special.psi(sum(alpha)) - special.psi(alpha[i] )) + g_sum_gamma[i]
+
+    #H = M * (special.polygamma(1, sum(alpha)) - np.diag(special.polygamma(1, alpha)))
+    z = M * special.polygamma(1, sum(alpha))
+    h = -M * special.polygamma(1, alpha)
+    c = sum(g/h)/ (1/z + sum(np.ones(number_of_topics)/h))
+
+    for i in range(K):
+        new_alpha[i] = alpha[i] - ((g[i]-c)/h[i])
+
+    return new_alpha
+
 
 
 class ldaObject:
@@ -164,7 +180,7 @@ class ldaObject:
                     self.document_parameters[n][0] = gamma
                     self.document_parameters[n][1] = phi
             # recalculate alpha
-            self.alpha = calculate_new_alpha(self.alpha)
+            self.alpha = calculate_new_alpha(self.alpha, self.document_parameters)
             # Normalise new computed beta and assign it to beta
             new_beta = normalize(new_beta, axis=1, norm="l1")
             #beta_difference = np.sum(abs(np.subtract(new_beta, self.beta)))
@@ -194,7 +210,7 @@ def main():
         lda_object.run_LDA(30,1)
 
     end = time.time()
-    print end - start
+    print end - start, "seconds"
 
 if __name__ == '__main__':
     main()
