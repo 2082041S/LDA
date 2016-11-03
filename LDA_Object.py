@@ -101,7 +101,7 @@ def calculate_phi_and_new_beta(beta, gamma, document, new_beta):
 
 
 def calculate_gamma(alpha, document, phi):
-    gamma = {}
+    gamma = []
     for j in range(number_of_topics):
         topic_probability = 0
 
@@ -110,34 +110,42 @@ def calculate_gamma(alpha, document, phi):
             word_count = document[word]
             topic_probability += word_probability * word_count
 
-        gamma[j] = alpha[j] + topic_probability
+        gamma.append(alpha[j] + topic_probability)
 
     return gamma
 
 
-def calculate_new_alpha(alpha,document_parameters):
-    new_alpha = np.zeros(number_of_topics)
-    #document parameters contains gamma  and phi values for each document([0] for gamma)
-    M = len(document_parameters)
+def calculate_new_alpha(init_alpha, gamma_list, max_iter = 1):
+    alpha = np.copy(init_alpha)
+    M = len(gamma_list)
     K = number_of_topics
     g = np.zeros(K)
     g_sum_gamma = np.zeros(K)
     for i in range (K):
         for d in range (M):
-            g_sum_gamma[i] += special.psi(document_parameters[d][0][i]) - special.psi(sum(document_parameters[d][0]))
-        g[i] = M *(special.psi(sum(alpha)) - special.psi(alpha[i] ) + g_sum_gamma[i])
+            g_sum_gamma[i] += special.psi(gamma_list[d][i]) - special.psi(sum(gamma_list[d]))
 
-    #H = M * (special.polygamma(1, sum(alpha)) - np.diag(special.polygamma(1, alpha)))
-    z = M * special.polygamma(1, sum(alpha))
-    h = -M * special.polygamma(1, alpha)
-    c = sum(g/h)/ (1/z + sum(np.ones(number_of_topics)/h))
+    for it in range(max_iter):
+        g = M *(special.psi(sum(alpha)) - special.psi(alpha)) + g_sum_gamma
+        #H = M * (special.polygamma(1, sum(alpha)) - np.diag(special.polygamma(1, alpha)))
+        z = M * special.polygamma(1, sum(alpha))
+        h = -M * special.polygamma(1, alpha)
+        c = sum(g/h)/ (1/z + sum(np.ones(number_of_topics)/h))
 
-    for i in range(K):
-        new_alpha[i] = alpha[i] - ((g[i]-c)/h[i])
+        new_alpha = alpha - ((g - np.ones(K) * c) / h)
 
-    print new_alpha
+        if (new_alpha < 0).sum() > 0:
+            init_alpha = np.copy(init_alpha) / 10.0
+            return calculate_new_alpha(init_alpha, gamma_list, max_iter)
 
-    return new_alpha
+        diff = np.sum(np.abs(alpha - new_alpha))
+        #print diff ,it
+        alpha = new_alpha
+        if diff < 1e-5 and it > 1:
+            return alpha
+
+    #print alpha
+    return alpha
 
 
 
@@ -182,10 +190,11 @@ class ldaObject:
                     self.document_parameters[n][0] = gamma
                     self.document_parameters[n][1] = phi
             # recalculate alpha
-            self.alpha = calculate_new_alpha(self.alpha, self.document_parameters)
+            gamma_list = map(list, zip(*self.document_parameters))[0]
+            self.alpha = calculate_new_alpha(self.alpha, gamma_list,20)
             # Normalise new computed beta and assign it to beta
             new_beta = normalize(new_beta, axis=1, norm="l1")
-            #beta_difference = np.sum(abs(np.subtract(new_beta, self.beta)))
+            beta_difference = np.sum(abs(np.subtract(new_beta, self.beta)))
             self.beta = new_beta.copy()
             #print np.abs(beta_difference)
 
@@ -209,7 +218,7 @@ def main():
     for i in range (1):
         lda_object = ldaObject(beta_list[i],corpus_list[i],alpha_list[i],False)
         #lda_object = ldaObject([[]],{},[],True)
-        lda_object.run_LDA(30,1)
+        lda_object.run_LDA(100,1)
 
     end = time.time()
     print end - start, "seconds"

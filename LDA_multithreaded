@@ -32,8 +32,8 @@ class my_thread (threading.Thread):
 
 start_time = time.time()
 threads=[]
-corpus_size = 1
-iterations = 30
+corpus_size = 4
+iterations = 100
 initial_beta = get_initial_beta()
 number_of_topics = get_number_of_topics()
 vocabulary = get_vocabulary()
