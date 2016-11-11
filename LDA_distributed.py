@@ -6,7 +6,7 @@ import time
 from functools import partial
 from Queue import Queue as _Queue
 import numpy as np
-from sklearn.preprocessing import normalize
+#from sklearn.preprocessing import normalize
 from LDA_Object import ldaObject
 
 import sys
@@ -51,7 +51,7 @@ def make_server_manager(port, authkey):
     JobQueueManager.register('get_job_q', callable=partial(get_q, job_q))
     JobQueueManager.register('get_result_q', callable=partial(get_q, result_q))
 
-    manager = JobQueueManager(address=("localhost", port), authkey=authkey)
+    manager = JobQueueManager(address=('127.0.0.1', port), authkey=authkey)
     manager.start()
     print('Server started at port %s' % port)
     return manager
@@ -134,7 +134,7 @@ def mp_work_allocator(shared_job_q, shared_result_q, nprocs):
 
 def runserver():
     # Start a shared manager server and access its queues
-    manager = make_server_manager(8081, "test")
+    manager = make_server_manager(12397, "test")
     shared_job_q = manager.get_job_q()
     shared_result_q = manager.get_result_q()
 
@@ -156,7 +156,9 @@ def runserver():
             beta_sum += beta
             beta_results.append(beta)
         old_beta = new_beta
-        new_beta = normalize(beta_sum, axis=1, norm="l1")
+
+        row_sums = beta_sum.sum(axis=1)
+        new_beta = beta_sum / row_sums[:, np.newaxis]
         beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
         for j in range(len(corpus)):
             shared_job_q.put(["beta", new_beta])
@@ -175,7 +177,7 @@ def runserver():
 
 
 def runclient():
-    manager = make_client_manager("localhost", 8081, "test")
+    manager = make_client_manager("127.0.0.1", 12397, "test")
     job_q = manager.get_job_q()
     result_q = manager.get_result_q()
     mp_work_allocator(job_q, result_q, 4)
