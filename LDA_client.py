@@ -33,7 +33,8 @@ def runclient():
     manager = make_client_manager("192.168.56.1", 12345, "test")
     job_q = manager.get_job_q()
     result_q = manager.get_result_q()
-    mp_work_allocator(job_q, result_q, 4)
+    mp_work_allocator(job_q, result_q, 2)
+
 
 def make_client_manager(IP, port, authkey):
     ServerQueueManager.register('get_job_q')
@@ -50,7 +51,7 @@ def mp_work_allocator(shared_job_q, shared_result_q, nprocs):
         LDA_worker as the worker function, and wait until all are
         finished.
     """
-    start_time = time.time()
+
     procs = []
     for i in range(nprocs):
         p = multiprocessing.Process(
@@ -62,9 +63,6 @@ def mp_work_allocator(shared_job_q, shared_result_q, nprocs):
     for p in procs:
         p.join()
 
-    end_time = time.time()
-    print end_time - start_time," seconds"
-
 
 def LDA_worker(job_q, result_q):
     """ A worker function to be launched in a separate process. Takes jobs from
@@ -72,38 +70,30 @@ def LDA_worker(job_q, result_q):
         the result (dict mapping number -> list of factors) is placed into
         result_q. Runs until job_q is empty.
     """
-    empty = False
+
     lda_object =[]
-    lda_list =[]
-    counter = 0
-    first_beta = True
+    process_iteration = -1
+    process_name = multiprocessing.current_process().name
+    multiprocessing.cpu_count()
+    server_iteration = 0
     while True:
-        try:
-            job = job_q.get_nowait()
-            print multiprocessing.current_process()
-            if job[0] == "corpus":
-                time.sleep(0.01)
-                lda_object = job[1]
-                lda_list.append(lda_object)
-                lda_object.run_LDA()
-            elif job[0] == "beta":
-                if first_beta:
-                    time.sleep(0.01)
-                    first_beta = False
-                lda_object = lda_list[counter]
-                counter = (counter + 1) % len(lda_list)
-                lda_object.update_beta(job[1])
-                lda_object.run_LDA()
-            elif job[0] == "wait":
-                pass
+            process_iteration += 1
+            if process_iteration == 0:
+                result_q.put(process_name)
             else:
-                print "ERROR: Unexpected job"
-                return;
-            result_q.put(lda_object.beta)
-        except:
-
-            return
-
+                job = job_q.get()
+                if job[0] == "Finished":
+                    return
+                if process_iteration == 1:
+                    process_name = job[0]
+                    lda_object = job[1]
+                    lda_object.run_LDA()
+                    result_q.put([process_name, lda_object.beta])
+                else:
+                    lda_object.update_beta(job[0])
+                    lda_object.run_LDA()
+                    result_q.put([process_name, lda_object.beta])
+                print process_name, process_iteration
     return
 
 if __name__ == '__main__':

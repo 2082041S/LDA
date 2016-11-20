@@ -38,37 +38,52 @@ def runserver():
     manager = make_server_manager(12345, "test")
     shared_job_q = manager.get_job_q()
     shared_result_q = manager.get_result_q()
+    processor_names = []
+    count = 0
 
-    for c in corpus:
+    while len(processor_names) < len(corpus):
+
+        given_name = shared_result_q.get()
+        new_name = "processor "+ str(count)
+        print new_name
+        processor_names.append(new_name)
+        count += 1
+
+    start_time = time.time()
+    for i in range(len(corpus)):
         alpha = np.random.uniform(low=0.0, high=1.0, size=5)
-        lda_object = ldaObject([[]], c, alpha, False)
-        shared_job_q.put(["corpus", lda_object])
+        lda_object = ldaObject([[]], corpus[i], alpha, False)
+        shared_job_q.put([processor_names[i],lda_object])
 
-    for j in range(len(corpus)):
-        shared_job_q.put(["wait", ""])
-    # Wait until all results are ready in shared_result_q
     new_beta = np.zeros((5, 20))
     for it in range(100):
-        beta_results = []
+        processor_names_received =[]
         beta_sum = np.zeros((5, 20))
-        # shared_job_q.put(["wait",""])
-        while len(beta_results) < len(corpus):
-            beta = shared_result_q.get()
+        while set(processor_names) != set(processor_names_received):
+            result = shared_result_q.get()
+            name = result[0]
+            processor_names_received.append(name)
+            beta = result[1]
             beta_sum += beta
-            beta_results.append(beta)
-        old_beta = new_beta
 
+
+        old_beta = new_beta
         row_sums = beta_sum.sum(axis=1)
         new_beta = beta_sum / row_sums[:, np.newaxis]
         beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
         for j in range(len(corpus)):
-            shared_job_q.put(["beta", new_beta])
+            shared_job_q.put([new_beta])
         print "iteration: ", it, "beta difference: ", \
             beta_diff
 
     # Sleep a bit before shutting down the server - to give clients time to
     # realize the job queue is empty and exit in an orderly way.
 
+    for j in range(len(corpus)):
+        shared_job_q.put(["Finished"])
+
+    end_time = time.time()
+    print end_time - start_time, " seconds"
     time.sleep(2)
 
     manager.shutdown()
