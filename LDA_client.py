@@ -30,10 +30,10 @@ class ServerQueueManager(SyncManager):
 
 
 def runclient():
-    manager = make_client_manager("192.168.56.1", 12345, "test")
+    manager = make_client_manager("bo620-10u.dcs.gla.ac.uk", 12345, "test")
     job_q = manager.get_job_q()
     result_q = manager.get_result_q()
-    mp_work_allocator(job_q, result_q, 2)
+    mp_work_allocator(job_q, result_q, 4)
 
 
 def make_client_manager(IP, port, authkey):
