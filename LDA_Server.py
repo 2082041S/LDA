@@ -40,8 +40,9 @@ def runserver():
     shared_result_q = manager.get_result_q()
     processor_names = []
     count = 0
+    n_times = 4
 
-    while len(processor_names) < len(corpus):
+    while len(processor_names) < len(corpus) * n_times:
 
         given_name = shared_result_q.get()
         new_name = "processor "+ str(count)
@@ -50,9 +51,9 @@ def runserver():
         count += 1
 
     start_time = time.time()
-    for i in range(len(corpus)):
+    for i in range(len(corpus) * n_times):
         alpha = np.random.uniform(low=0.0, high=1.0, size=5)
-        lda_object = ldaObject([[]], corpus[i], alpha, False)
+        lda_object = ldaObject([[]], corpus[i%len(corpus)], alpha, False)
         shared_job_q.put([processor_names[i],lda_object])
 
     new_beta = np.zeros((5, 20))
@@ -71,7 +72,7 @@ def runserver():
         row_sums = beta_sum.sum(axis=1)
         new_beta = beta_sum / row_sums[:, np.newaxis]
         beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
-        for j in range(len(corpus)):
+        for j in range(len(corpus) * n_times):
             shared_job_q.put([new_beta])
         print "iteration: ", it, "beta difference: ", \
             beta_diff
@@ -79,7 +80,7 @@ def runserver():
     # Sleep a bit before shutting down the server - to give clients time to
     # realize the job queue is empty and exit in an orderly way.
 
-    for j in range(len(corpus)):
+    for j in range(len(corpus) * n_times):
         shared_job_q.put(["Finished"])
 
     end_time = time.time()
@@ -96,7 +97,7 @@ def make_server_manager(port, authkey):
     JobQueueManager.register('get_job_q', callable=partial(get_q, job_q))
     JobQueueManager.register('get_result_q', callable=partial(get_q, result_q))
 
-    manager = JobQueueManager(address=(" 192.168.56.1", port), authkey=authkey)
+    manager = JobQueueManager(address=("bo620-10u.dcs.gla.ac.uk", port), authkey=authkey)
     manager.start()
     print('Server started at port %s' % port)
     return manager
