@@ -5,6 +5,8 @@ from multiprocessing.managers import SyncManager
 import time
 from Queue import Queue as _Queue
 
+import sys
+
 
 class Queue(_Queue):
     """ A picklable queue. """
@@ -29,20 +31,20 @@ class ServerQueueManager(SyncManager):
     pass
 
 
-def runclient():
-    manager = make_client_manager("bo620-10u.dcs.gla.ac.uk", 12345, "test")
+def runclient(host,port):
+    manager = make_client_manager(host, port, "test")
     job_q = manager.get_job_q()
     result_q = manager.get_result_q()
     mp_work_allocator(job_q, result_q, 4)
 
 
-def make_client_manager(IP, port, authkey):
+def make_client_manager(host, port, authkey):
     ServerQueueManager.register('get_job_q')
     ServerQueueManager.register('get_result_q')
-    manager = ServerQueueManager(address=(IP, port), authkey=authkey)
+    manager = ServerQueueManager(address=(host, port), authkey=authkey)
     manager.connect()
 
-    print 'Client connected to %s:%s' % (IP, port)
+    print 'Client connected to %s:%s' % (host, port)
     return manager
 
 def mp_work_allocator(shared_job_q, shared_result_q, nprocs):
@@ -97,4 +99,9 @@ def LDA_worker(job_q, result_q):
     return
 
 if __name__ == '__main__':
-    runclient()
+    if len(sys.argv) == 3:
+        host = sys.argv[1]
+        port = int(sys.argv[2])
+        runclient(host, port)
+    else:
+        print "Please provide <host> and <port>"

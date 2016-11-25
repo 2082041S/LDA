@@ -38,10 +38,9 @@ def get_vocabulary():
     return vocabulary
 
 
-def generate_corpus():
+def generate_corpus(number_of_documents, words_per_document):
     alpha = np.random.uniform(low=0.0, high=1.0, size=5)
-    number_of_documents = 50
-    words_per_document = 50
+
     # print "corpus has ", number_of_documents, " documents each containing ", \
     #    words_per_document, " words with alpha equal to: ", alpha
     corpus = []
@@ -161,7 +160,7 @@ class ldaObject:
         else:
             self.beta = beta
         if random:
-            self.corpus, self.alpha = generate_corpus()
+            self.corpus, self.alpha = generate_corpus(100 ,100)
         else:
             self.corpus = corpus
             self.alpha = alpha
