@@ -53,6 +53,9 @@ def runserver(port):
         processor_names.append(new_name)
         count += 1
 
+    # get rid of extra processors
+    shared_result_q = Queue()
+
     start_time = time.time()
     for i in range((len(corpus) * n_times) -1):
         alpha = np.random.uniform(low=0.0, high=1.0, size=5)
