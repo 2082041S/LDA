@@ -78,24 +78,30 @@ def LDA_worker(job_q, result_q):
     process_name = multiprocessing.current_process().name
     multiprocessing.cpu_count()
     server_iteration = 0
+    corpus_received = False
     while True:
             process_iteration += 1
             if process_iteration == 0:
                 result_q.put(process_name)
             else:
                 job = job_q.get()
+                if job[0] == "Disconnect":
+                    print process_name, "out"
+                    return
                 if job[0] == "Finished":
                     return
-                if process_iteration == 1:
+                if process_iteration == 1 and len(job) == 2:
+                    corpus_received = True
                     process_name = job[0]
                     lda_object = job[1]
                     lda_object.run_LDA()
                     result_q.put([process_name, lda_object.beta])
-                else:
+                elif corpus_received:
                     lda_object.update_beta(job[0])
                     lda_object.run_LDA()
                     result_q.put([process_name, lda_object.beta])
                 print process_name, process_iteration
+                time.sleep(0.01)
     return
 
 if __name__ == '__main__':

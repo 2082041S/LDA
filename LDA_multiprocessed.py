@@ -109,7 +109,7 @@ def main():
     # alpha_list = alpha_list.append(alpha_list)
     pool = multiprocessing.Pool(corpus_size)
     for i in range(corpus_size):
-        lda_object = ldaObject(beta_list[i], corpus_list[i],alpha_list[i], True)
+        lda_object = ldaObject(beta_list[i], corpus_list[i], alpha_list[i])
         pool.apply_async(func=update, args=(lda, lda_object, corpus_size, iterations, l))
     pool.close()
     pool.join()

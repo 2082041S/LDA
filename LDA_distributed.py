@@ -135,7 +135,7 @@ def runserver():
 
     for c in corpus:
         alpha = np.random.uniform(low=0.0, high=1.0, size=5)
-        lda_object = ldaObject([[]],c,alpha, False)
+        lda_object = ldaObject([[]], c, alpha)
         shared_job_q.put(["corpus",lda_object])
 
     for j in range(len(corpus)):
