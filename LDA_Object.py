@@ -150,7 +150,7 @@ class ldaObject:
 
             beta_difference = np.sum(abs(np.subtract(new_beta, self.beta)))
             self.beta = new_beta.copy()
-            print np.abs(beta_difference)
+            #print np.abs(beta_difference)
 
 
 def main():
@@ -162,7 +162,7 @@ def main():
     # print vocabulary
     # print number_of_topics
 
-    for i in range (1):
+    for i in range (4):
         lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
         #lda_object = ldaObject([[]],{},[],True)
         lda_object.run_LDA(100,1)
