@@ -2,12 +2,14 @@ import socket
 from multiprocessing import Queue
 from multiprocessing.managers import SyncManager
 import time
-import pickle
+import cPickle as pickle
+import os
 from functools import partial
 from Queue import Queue as _Queue
 import numpy as np
 import sys
 
+from lda import VariationalLDA
 from LDA_Object import ldaObject
 #from LDA_generate_corpus import get_corpus_list, get_alpha_list
 
@@ -46,58 +48,46 @@ def runserver(port):
     shared_job_q = manager.get_job_q()
     shared_result_q = manager.get_result_q()
     corpus_names = []
-    # count = 0
-    # while len(processor_names) < len(corpus_list):
-    #
-    #     given_name = shared_result_q.get()
-    #     new_name = "processor "+ str(count)
-    #     print new_name
-    #     processor_names.append(new_name)
-    #     count += 1
-    #
-    # # get rid of extra processors
-    # time.sleep(1)
-    # while True:
-    #     try:
-    #         extra_processor = shared_result_q.get_nowait()
-    #         shared_job_q.put(["Disconnect"])
-    #     except:
-    #         break
-    # time.sleep(1)
 
     # print "Got All needed processes: ",processor_names
     start_time = time.time()
     for i in range(len(corpus_list)):
         corpus_names.append("corpus" + str(i))
-        lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
+        lda_object = VariationalLDA(corpus_list[i], number_of_topics, 0.1, alpha_list[i])
+        # lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
         shared_job_q.put([corpus_names[i],lda_object])
 
 
     print corpus_names
     new_beta = np.zeros((number_of_topics, vocabulary_size))
     it =0
-    beta_diff = 50
-    while beta_diff >2:
+    beta_diff = number_of_topics
+
+    while beta_diff >0.1:
         processor_names_received =[]
         beta_sum = np.zeros((number_of_topics, vocabulary_size))
-        start_waiting_time = time.time()
+
+
         while set(corpus_names) != set(processor_names_received):
             result = shared_result_q.get()
             name = result[0]
+
             if name in processor_names_received:
                 shared_job_q.put(["beta", new_beta, it])
                 print name
+
             else:
                 processor_names_received.append(name)
             beta = result[1]
             beta_sum += beta
-            #print processor_names_received
+            print processor_names_received
         old_beta = new_beta
         row_sums = beta_sum.sum(axis=1)
         new_beta = beta_sum / row_sums[:, np.newaxis]
         beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
-        for j in range(len(corpus_list)):
-            shared_job_q.put(["beta", new_beta, it])
+        if beta_diff > 0.1:
+            for j in range(len(corpus_list)):
+                shared_job_q.put(["beta", new_beta, it])
         print "iteration: ", it, "beta difference: ", beta_diff
         it += 1
 
@@ -107,7 +97,7 @@ def runserver(port):
         shared_job_q.put(["Finished"])
 
     processor_names_received =[]
-    final_lda_objects = []
+    files = {}
     while set(corpus_names) != set(processor_names_received):
         result = shared_result_q.get()
         name = result[0]
@@ -116,12 +106,24 @@ def runserver(port):
             print name
         else:
             processor_names_received.append(name)
-            final_lda_objects.append(result[1])
+            #print processor_names_received
+            files[result[1]] = result[2]
 
-    print "Got back all lda_objects " +str(len(final_lda_objects))
+    print "Got back all files " +str(len(files))
+
+
+
+    cwd = os.getcwd()
+    print "current directory " + cwd
+    directory = cwd + "/results/"
+    pickle.dump(files.keys(), open(directory +"corpus_list.p", "wb"))
+    for file in files:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        pickle.dump(files[file], open(directory + file, "wb"))
     end_time = time.time()
     print end_time - start_time, " seconds"
-    time.sleep(2)
+    time.sleep(5)
 
     manager.shutdown()
 

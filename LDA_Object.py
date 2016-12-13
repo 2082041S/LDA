@@ -32,7 +32,7 @@ def initialize_phi_and_gamma_for_corpus(corpus):
     document_parameters = []
     for document in corpus:
         gamma = np.random.uniform(low=0.0, high=1.0, size=number_of_topics)
-        phi = generate_word_distribution_of_topics(document)
+        phi = generate_word_distribution_of_topics(corpus[document])
         document_parameters.append([gamma, phi])
     return document_parameters
 
@@ -110,18 +110,18 @@ def calculate_new_alpha(init_alpha, gamma_list, max_iter = 1):
 
 class ldaObject:
 
-    def __init__(self, beta, corpus, alpha):
-        if beta == [[]]:
-            self.beta = initial_beta
+    def __init__(self, beta_matrix, corpus, alpha):
+        if beta_matrix == [[]]:
+            self.beta_matrix = initial_beta
         else:
-            self.beta = beta
+            self.beta_matrix = beta_matrix
         self.alpha = alpha
         self.corpus = corpus
         self.document_parameters = initialize_phi_and_gamma_for_corpus(self.corpus)
 
 
     def update_beta(self, beta):
-        self.beta = beta
+        self.beta_matrix = beta
 
     def run_LDA(self, iterations=1, phi_and_gamma_iterations=1):
         epsilon = 0.01
@@ -133,7 +133,7 @@ class ldaObject:
                     document = self.corpus[n]
                     #print len(document), document
                     # for each document recalculate topic probability Eq (6)
-                    phi, new_beta = calculate_phi_and_new_beta(self.beta, gamma, document, new_beta)
+                    phi, new_beta = calculate_phi_and_new_beta(self.beta_matrix, gamma, document, new_beta)
 
                     # for each document recalculate topic distribution Eq (7)
                     gamma = calculate_gamma(self.alpha, document,phi)
@@ -148,8 +148,8 @@ class ldaObject:
             row_sums = new_beta.sum(axis=1)
             new_beta = new_beta / row_sums[:, np.newaxis]
 
-            beta_difference = np.sum(abs(np.subtract(new_beta, self.beta)))
-            self.beta = new_beta.copy()
+            beta_difference = np.sum(abs(np.subtract(new_beta, self.beta_matrix)))
+            self.beta_matrix = new_beta.copy()
             #print np.abs(beta_difference)
 
 
@@ -162,7 +162,7 @@ def main():
     # print vocabulary
     # print number_of_topics
 
-    for i in range (4):
+    for i in range (1):
         lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
         #lda_object = ldaObject([[]],{},[],True)
         lda_object.run_LDA(100,1)

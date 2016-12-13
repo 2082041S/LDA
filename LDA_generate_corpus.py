@@ -33,7 +33,7 @@ def index_between_bounds(index, topic_index):
 
 def generate_corpus(number_of_documents, words_per_document):
     alpha = np.random.uniform(low=0.0, high=1.0, size=number_of_topics)
-    corpus = []
+    corpus = {}
 
     for i in range(number_of_documents):
         document_dict = {}
@@ -47,7 +47,8 @@ def generate_corpus(number_of_documents, words_per_document):
             else:
                 document_dict[sampled_word] += 1
 
-        corpus.append(document_dict)
+        document_name = str(i) + "_doc" + str(i)
+        corpus[document_name] = document_dict
     return corpus, alpha
 
 
@@ -56,7 +57,7 @@ def get_initial_beta():
 
 
 number_of_topics = 50
-number_of_corpus = 4
+number_of_corpus = 8
 vocabulary = generate_words(200)
 
 word_in_vocab_dict = {}

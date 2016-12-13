@@ -65,7 +65,6 @@ def mp_work_allocator(shared_job_q, shared_result_q, nprocs):
     for p in procs:
         p.join()
 
-
 def LDA_worker(job_q, result_q):
     """ A worker function to be launched in a separate process. Takes jobs from
         job_q - each job a list of numbers to factorize. When the job is done,
@@ -78,24 +77,34 @@ def LDA_worker(job_q, result_q):
     corpus_list = []
     current_lda_object_index = 0
     server_iteration = 0
+    corpus_count = 0
     corpus_received = False
     while True:
             try:
                 job = job_q.get_nowait()
+
                 if job[0].startswith("corpus"):
                     corpus_name = job[0]
                     print process_name, "Received corpus", corpus_name
                     lda_object = job[1]
-                    lda_object.run_LDA()
+                    # lda_object.run_LDA()
+                    lda_object.run_vb(verbose= False)
                     corpus_list.append([corpus_name, lda_object, 0])
                     current_lda_object_index = len(corpus_list) - 1
-                    result_q.put([corpus_name,lda_object.beta])
+                    result_q.put([corpus_name,lda_object.beta_matrix])
                     corpus_received = True
-                elif job[0].startswith("Finished") or job[0].startswith("Disconnected") :
+
+                elif job[0].startswith("Finished"):
                     current_lda_object_index  = (current_lda_object_index + 1) % len(corpus_list)
                     current_corpus = corpus_list[current_lda_object_index]
-                    result_q.put([current_corpus[0], current_corpus[1]])
-                    return
+                    corpus_name = current_corpus[0]
+                    lda_object = current_corpus[1]
+                    file = corpus_name + ".p"
+                    result_q.put([corpus_name, file, lda_object.make_dictionary(filename=file)])
+                    corpus_count += 1
+                    if corpus_count >= len(corpus_list):
+                        return
+
                 elif corpus_received and job[0].startswith("beta"):
                     current_lda_object_index  = (current_lda_object_index + 1) % len(corpus_list)
                     current_corpus = corpus_list[current_lda_object_index]
@@ -103,45 +112,30 @@ def LDA_worker(job_q, result_q):
                     corpus_name = current_corpus[0]
                     lda_object = current_corpus[1]
                     print corpus_name, current_iteration ,job[2]
+
                     # if processor is ahead of others then put back job and wait 3 seconds
                     if current_iteration > job[2]:
                         job_q.put(job)
                         time.sleep(3)
                         pass
+
                     else:
-                        lda_object.run_LDA()
+                        # lda_object.run_LDA()
+                        lda_object.run_vb(initialise=False, verbose=False)
                         current_corpus[2] +=1
-                        result_q.put([corpus_name, lda_object.beta])
+                        result_q.put([corpus_name, lda_object.beta_matrix])
+
                 else:
                     print "Error " + str(job[0])
                     return
+
             except:
                 if not corpus_received:
                     print process_name, "disconnected"
                     return
                 else:
                     pass
-            # if process_iteration == 0:
-            #     result_q.put(process_name)
-            # else:
-            #     job = job_q.get()
-            #     if job[0] == "Disconnect":
-            #         print process_name, "out"
-            #         return
-            #     if job[0] == "Finished":
-            #         return
-            #     if process_iteration == 1 and len(job) == 2:
-            #         corpus_received = True
-            #         process_name = job[0]
-            #         lda_object = job[1]
-            #         lda_object.run_LDA()
-            #         result_q.put([process_name, lda_object.beta])
-            #     elif corpus_received:
-            #         lda_object.update_beta(job[0])
-            #         lda_object.run_LDA()
-            #         result_q.put([process_name, lda_object.beta])
-            #     print process_name, process_iteration
-            #     time.sleep(0.01)
+
     return
 
 if __name__ == '__main__':
