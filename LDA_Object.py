@@ -29,11 +29,11 @@ def generate_word_distribution_of_topics(words_in_document):
 
 
 def initialize_phi_and_gamma_for_corpus(corpus):
-    document_parameters = []
+    document_parameters = {}
     for document in corpus:
         gamma = np.random.uniform(low=0.0, high=1.0, size=number_of_topics)
         phi = generate_word_distribution_of_topics(corpus[document])
-        document_parameters.append([gamma, phi])
+        document_parameters[document] = [gamma, phi]
     return document_parameters
 
 
@@ -124,13 +124,13 @@ class ldaObject:
         self.beta_matrix = beta
 
     def run_LDA(self, iterations=1, phi_and_gamma_iterations=1):
-        epsilon = 0.01
+        epsilon = 0.1
         for it in range(iterations):
             for i in range(phi_and_gamma_iterations):
                 new_beta = np.ones((number_of_topics, len(vocabulary))) * epsilon
-                for n in range(len(self.corpus)):
-                    gamma = self.document_parameters[n][0]  # document per topic distribution
-                    document = self.corpus[n]
+                for doc in self.corpus:
+                    gamma = self.document_parameters[doc][0]  # document per topic distribution
+                    document = self.corpus[doc]
                     #print len(document), document
                     # for each document recalculate topic probability Eq (6)
                     phi, new_beta = calculate_phi_and_new_beta(self.beta_matrix, gamma, document, new_beta)
@@ -139,10 +139,11 @@ class ldaObject:
                     gamma = calculate_gamma(self.alpha, document,phi)
 
                     # update document parameters
-                    self.document_parameters[n][0] = gamma
-                    self.document_parameters[n][1] = phi
+                    self.document_parameters[doc][0] = gamma
+                    self.document_parameters[doc][1] = phi
             # recalculate alpha
-            gamma_list = map(list, zip(*self.document_parameters))[0]
+            gamma_list = map(list, zip(*self.document_parameters.values()))[0]
+
             self.alpha = calculate_new_alpha(self.alpha, gamma_list,20)
             # Normalise new computed beta and assign it to beta
             row_sums = new_beta.sum(axis=1)
@@ -165,7 +166,7 @@ def main():
     for i in range (1):
         lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
         #lda_object = ldaObject([[]],{},[],True)
-        lda_object.run_LDA(100,1)
+        lda_object.run_LDA(1,1)
 
     end = time.time()
     print end - start, "seconds"

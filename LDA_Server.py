@@ -14,10 +14,6 @@ from LDA_Object import ldaObject
 #from LDA_generate_corpus import get_corpus_list, get_alpha_list
 
 
-corpus_list = pickle.load(open("corpus.p","rb"))
-alpha_list = pickle.load(open("alpha.p","rb"))
-initial_beta = pickle.load(open("initial_beta.p","rb"))
-number_of_topics, vocabulary_size = initial_beta.shape
 class Queue(_Queue):
     """ A picklable queue. """
 
@@ -43,17 +39,24 @@ class JobQueueManager(SyncManager):
 
 
 def runserver(port):
+    print "Start"
+    corpus_list = pickle.load(open("corpus.p", "rb"))
+    print "Received corpus"
+    vocabulary = pickle.load(open("vocabulary.p", "rb"))
+    print "Received vocabulary"
+    vocabulary_size = len(vocabulary)
+    number_of_topics = 500
     # Start a shared manager server and access its queues
     manager = make_server_manager(port, "test")
     shared_job_q = manager.get_job_q()
     shared_result_q = manager.get_result_q()
     corpus_names = []
 
-    # print "Got All needed processes: ",processor_names
+
     start_time = time.time()
     for i in range(len(corpus_list)):
         corpus_names.append("corpus" + str(i))
-        lda_object = VariationalLDA(corpus_list[i], number_of_topics, 0.1, alpha_list[i])
+        lda_object = VariationalLDA(corpus_list[i], number_of_topics, 0.1, 1)
         # lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
         shared_job_q.put([corpus_names[i],lda_object])
 
