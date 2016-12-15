@@ -1,8 +1,6 @@
 import csv
 from os import walk
 import cPickle as pickle
-from pympler.tracker import SummaryTracker
-tracker = SummaryTracker()
 
 def get_beer_files():
     dir = "C:/simon_rogers/POS_beer/"
