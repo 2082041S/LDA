@@ -59,10 +59,11 @@ def main():
     files = get_beer_files()
     add_urine_files(files)
     delta = 0.05
-    corpus_list = []
+    corpus_list = {}
     vocabulary=[]
     count = 0
-    for linked_file in files.values():
+    for file_name in files:
+        linked_file = files[file_name]
         ms1_file = linked_file[0]
         ms2_file = linked_file[1]
         corpus = {}
@@ -116,7 +117,7 @@ def main():
                 corpus[document_name][loss_name] = loss_bin[1] * 1000
                 vocabulary.append(loss_name)
 
-        corpus_list.append(corpus)
+        corpus_list[file_name] = corpus
     print len(vocabulary)
     pickle.dump(corpus_list, open("corpus.p","wb"))
     pickle.dump(vocabulary, open("vocabulary.p", "wb"))

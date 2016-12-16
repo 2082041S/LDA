@@ -38,6 +38,21 @@ class JobQueueManager(SyncManager):
     pass
 
 
+#Usage:
+#  addAtPos(xycoor)
+#    - mat1  : matrix to be added
+#    - mat2  : add this matrix to mat1
+#    - xycoor: tuple (x,y) containing coordinates
+def addAtPos(mat1, mat2, xycoor):
+    size_x, size_y = np.shape(mat2)
+    coor_x, coor_y = xycoor
+    end_x, end_y   = (coor_x + size_x), (coor_y + size_y)
+    mat1[coor_x:end_x, coor_y:end_y] = mat1[coor_x:end_x, coor_y:end_y] + mat2
+    return mat1
+
+
+
+
 def runserver(port):
     print "Start"
     corpus_list = pickle.load(open("corpus.p", "rb"))
@@ -59,38 +74,66 @@ def runserver(port):
         lda_object = VariationalLDA(corpus_list[i], number_of_topics, 0.1, 1)
         # lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
         shared_job_q.put([corpus_names[i],lda_object])
+        # no_result = True
+        # while no_result:
+        #         try:
+        #             shared_job_q.put_nowait([corpus_names[i],lda_object])
+        #             no_result = False
+        #         except:
+        #             no_result = True
+
+        
 
 
     print corpus_names
     new_beta = np.zeros((number_of_topics, vocabulary_size))
     it =0
+    no_result = True
+    convergence_number = 1
     beta_diff = number_of_topics
 
-    while beta_diff >0.1:
+    while beta_diff >convergence_number:
         processor_names_received =[]
         beta_sum = np.zeros((number_of_topics, vocabulary_size))
 
 
         while set(corpus_names) != set(processor_names_received):
+            
+            # while no_result:
+            #     try:
+            #         result = shared_result_q.get_nowait()
+            #         name = result[0]
+            #         print "Received result", name
+            #         no_result = False
+            #     except:
+            #         no_result = True
+
             result = shared_result_q.get()
             name = result[0]
-
+            #print "Received result", name
             if name in processor_names_received:
-                shared_job_q.put(["beta", new_beta, it])
-                print name
+                shared_job_q.put_nowait(["beta", new_beta, it])
+                # print name
 
             else:
                 processor_names_received.append(name)
             beta = result[1]
-            beta_sum += beta
-            print processor_names_received
+            addAtPos(beta_sum, beta, (0,0))
+            #print processor_names_received
         old_beta = new_beta
         row_sums = beta_sum.sum(axis=1)
         new_beta = beta_sum / row_sums[:, np.newaxis]
         beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
-        if beta_diff > 0.1:
+        if beta_diff > convergence_number:
             for j in range(len(corpus_list)):
-                shared_job_q.put(["beta", new_beta, it])
+                result_not_put = True
+                while result_not_put:
+                    try:
+                        shared_job_q.put_nowait(["beta", new_beta, it])
+                        result_not_put = False
+                    except:
+                        result_not_put = True
+
         print "iteration: ", it, "beta difference: ", beta_diff
         it += 1
 
@@ -101,13 +144,22 @@ def runserver(port):
 
     processor_names_received =[]
     files = {}
+    no_result = True
     while set(corpus_names) != set(processor_names_received):
         result = shared_result_q.get()
+        # while no_result:
+        #     try:
+        #         result = shared_result_q.get_nowait()
+        #         no_result = False
+        #     except:
+        #         no_result = True
         name = result[0]
         if name in processor_names_received:
             shared_job_q.put(["Finished"])
             print name
         else:
+            print name
+            print result[1]
             processor_names_received.append(name)
             #print processor_names_received
             files[result[1]] = result[2]
@@ -119,10 +171,10 @@ def runserver(port):
     cwd = os.getcwd()
     print "current directory " + cwd
     directory = cwd + "/results/"
+    if not os.path.exists(directory):
+        os.makedirs(directory)
     pickle.dump(files.keys(), open(directory +"corpus_list.p", "wb"))
     for file in files:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
         pickle.dump(files[file], open(directory + file, "wb"))
     end_time = time.time()
     print end_time - start_time, " seconds"

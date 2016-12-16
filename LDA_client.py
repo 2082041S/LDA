@@ -35,7 +35,7 @@ def runclient(host,port):
     manager = make_client_manager(host, port, "test")
     job_q = manager.get_job_q()
     result_q = manager.get_result_q()
-    mp_work_allocator(job_q, result_q, 5)
+    mp_work_allocator(job_q, result_q, multiprocessing.cpu_count())
 
 
 def make_client_manager(host, port, authkey):
@@ -84,23 +84,37 @@ def LDA_worker(job_q, result_q):
                 job = job_q.get_nowait()
 
                 if job[0].startswith("corpus"):
+                    corpus_received = True
                     corpus_name = job[0]
                     print process_name, "Received corpus", corpus_name
                     lda_object = job[1]
                     # lda_object.run_LDA()
-                    lda_object.run_vb(verbose= False)
+                    lda_object.run_vb()
                     corpus_list.append([corpus_name, lda_object, 0])
                     current_lda_object_index = len(corpus_list) - 1
+                    
                     result_q.put([corpus_name,lda_object.beta_matrix])
-                    corpus_received = True
+                    # result_not_put = True
+                    # while result_not_put:
+                    #     try:
+                    #         result_q.put_nowait([corpus_name,lda_object.beta_matrix])
+                    #         result_not_put = False
+                    #     except:
+                    #         result_not_put = True
+
+                    #print process_name, "sent corpus", corpus_name
+                    
 
                 elif job[0].startswith("Finished"):
                     current_lda_object_index  = (current_lda_object_index + 1) % len(corpus_list)
                     current_corpus = corpus_list[current_lda_object_index]
                     corpus_name = current_corpus[0]
                     lda_object = current_corpus[1]
-                    file = corpus_name + ".p"
-                    result_q.put([corpus_name, file, lda_object.make_dictionary(filename=file)])
+                    filename = corpus_name + ".p"
+                    result_not_put = True
+                    result_q.put([corpus_name, filename, lda_object.make_dictionary(filename=filename)])
+                    print corpus_name, " finished"
+                    
                     corpus_count += 1
                     if corpus_count >= len(corpus_list):
                         return
@@ -115,15 +129,31 @@ def LDA_worker(job_q, result_q):
 
                     # if processor is ahead of others then put back job and wait 3 seconds
                     if current_iteration > job[2]:
+                        result_not_put = True
                         job_q.put(job)
+                        # while result_not_put:
+                        #     try:
+                        #         job_q.put_nowait(job)
+                        #         result_not_put = False
+                        #     except:
+                        #         result_not_put = True
+                        
                         time.sleep(3)
                         pass
 
                     else:
                         # lda_object.run_LDA()
-                        lda_object.run_vb(initialise=False, verbose=False)
+                        lda_object.run_vb(initialise=False)
                         current_corpus[2] +=1
+                        result_not_put = True
                         result_q.put([corpus_name, lda_object.beta_matrix])
+                        # while result_not_put:
+                        #     try:
+                        #         result_q.put_nowait([corpus_name, lda_object.beta_matrix])
+                        #         result_not_put = False
+                        #     except:
+                        #         result_not_put = True
+                        
 
                 else:
                     print "Error " + str(job[0])
