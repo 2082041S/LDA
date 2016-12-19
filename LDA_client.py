@@ -83,7 +83,7 @@ def LDA_worker(job_q, result_q):
             try:
                 job = job_q.get_nowait()
 
-                if job[0].startswith("corpus"):
+                if job[0].endswith("result"):
                     corpus_received = True
                     corpus_name = job[0]
                     print process_name, "Received corpus", corpus_name

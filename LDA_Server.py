@@ -55,11 +55,14 @@ def addAtPos(mat1, mat2, xycoor):
 
 def runserver(port):
     print "Start"
-    corpus_list = pickle.load(open("corpus.p", "rb"))
+    corpus_list_dict = pickle.load(open("corpus.p", "rb"))
     print "Received corpus"
     vocabulary = pickle.load(open("vocabulary.p", "rb"))
     print "Received vocabulary"
     vocabulary_size = len(vocabulary)
+    word_index = {}
+    for pos in range (vocabulary_size):
+        word_index[vocabulary[pos]] = pos
     number_of_topics = 500
     # Start a shared manager server and access its queues
     manager = make_server_manager(port, "test")
@@ -69,11 +72,12 @@ def runserver(port):
 
 
     start_time = time.time()
-    for i in range(len(corpus_list)):
-        corpus_names.append("corpus" + str(i))
-        lda_object = VariationalLDA(corpus_list[i], number_of_topics, 0.1, 1)
+    for name in corpus_list_dict:
+        corpus_name = name + "_LDA_result"
+        corpus_names.append(corpus_name)
+        lda_object = VariationalLDA(corpus_list_dict[name], number_of_topics, 0.1, 1, word_index= word_index)
         # lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
-        shared_job_q.put([corpus_names[i],lda_object])
+        shared_job_q.put([corpus_name,lda_object])
         # no_result = True
         # while no_result:
         #         try:
@@ -118,14 +122,14 @@ def runserver(port):
             else:
                 processor_names_received.append(name)
             beta = result[1]
-            addAtPos(beta_sum, beta, (0,0))
+            beta_sum += beta
             #print processor_names_received
         old_beta = new_beta
         row_sums = beta_sum.sum(axis=1)
         new_beta = beta_sum / row_sums[:, np.newaxis]
         beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
         if beta_diff > convergence_number:
-            for j in range(len(corpus_list)):
+            for j in range(len(corpus_list_dict)):
                 result_not_put = True
                 while result_not_put:
                     try:
@@ -139,7 +143,7 @@ def runserver(port):
 
     print "Finished converging Beta " + str(beta_diff)
 
-    for j in range(len(corpus_list)):
+    for j in range(len(corpus_list_dict)):
         shared_job_q.put(["Finished"])
 
     processor_names_received =[]
