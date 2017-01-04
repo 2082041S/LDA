@@ -38,21 +38,6 @@ class JobQueueManager(SyncManager):
     pass
 
 
-#Usage:
-#  addAtPos(xycoor)
-#    - mat1  : matrix to be added
-#    - mat2  : add this matrix to mat1
-#    - xycoor: tuple (x,y) containing coordinates
-def addAtPos(mat1, mat2, xycoor):
-    size_x, size_y = np.shape(mat2)
-    coor_x, coor_y = xycoor
-    end_x, end_y   = (coor_x + size_x), (coor_y + size_y)
-    mat1[coor_x:end_x, coor_y:end_y] = mat1[coor_x:end_x, coor_y:end_y] + mat2
-    return mat1
-
-
-
-
 def runserver(port):
     print "Start"
     corpus_list_dict = pickle.load(open("corpus.p", "rb"))
@@ -76,22 +61,11 @@ def runserver(port):
         corpus_name = name + "_LDA_result"
         corpus_names.append(corpus_name)
         lda_object = VariationalLDA(corpus_list_dict[name], number_of_topics, 0.1, 1, word_index= word_index)
-        # lda_object = ldaObject([[]], corpus_list[i], alpha_list[i])
-        shared_job_q.put([corpus_name,lda_object])
-        # no_result = True
-        # while no_result:
-        #         try:
-        #             shared_job_q.put_nowait([corpus_names[i],lda_object])
-        #             no_result = False
-        #         except:
-        #             no_result = True
-
-        
-
+        shared_job_q.put([corpus_name,lda_object]) 
 
     print corpus_names
     new_beta = np.zeros((number_of_topics, vocabulary_size))
-    it =0
+    it = 0
     no_result = True
     convergence_number = 0.01
     beta_diff = number_of_topics
@@ -100,34 +74,24 @@ def runserver(port):
         processor_names_received =[]
         beta_sum = np.zeros((number_of_topics, vocabulary_size))
 
-
         while set(corpus_names) != set(processor_names_received):
-            
-            # while no_result:
-            #     try:
-            #         result = shared_result_q.get_nowait()
-            #         name = result[0]
-            #         print "Received result", name
-            #         no_result = False
-            #     except:
-            #         no_result = True
-
             result = shared_result_q.get()
             name = result[0]
             #print "Received result", name
             if name in processor_names_received:
                 shared_job_q.put_nowait(["beta", new_beta, it])
                 # print name
-
             else:
                 processor_names_received.append(name)
             beta = result[1]
             beta_sum += beta
             #print processor_names_received
+
         old_beta = new_beta
         row_sums = beta_sum.sum(axis=1)
         new_beta = beta_sum / row_sums[:, np.newaxis]
         beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
+
         if beta_diff > convergence_number:
             for j in range(len(corpus_list_dict)):
                 result_not_put = True
@@ -140,6 +104,11 @@ def runserver(port):
 
         print "iteration: ", it, "beta difference: ", beta_diff
         it += 1
+        if np.isnan(beta_diff):
+            print "First element of beta_sum",beta_sum[0][0]
+            print "First element of new beta",new_beta[0][0]
+            print "First element of old beta",old_beta[0][0]
+
 
     print "Finished converging Beta " + str(beta_diff)
 
@@ -151,12 +120,6 @@ def runserver(port):
     no_result = True
     while set(corpus_names) != set(processor_names_received):
         result = shared_result_q.get()
-        # while no_result:
-        #     try:
-        #         result = shared_result_q.get_nowait()
-        #         no_result = False
-        #     except:
-        #         no_result = True
         name = result[0]
         if name in processor_names_received:
             shared_job_q.put(["Finished"])
@@ -169,8 +132,6 @@ def runserver(port):
             files[result[1]] = result[2]
 
     print "Got back all files " +str(len(files))
-
-
 
     cwd = os.getcwd()
     print "current directory " + cwd

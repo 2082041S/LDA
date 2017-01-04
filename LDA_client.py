@@ -88,21 +88,10 @@ def LDA_worker(job_q, result_q):
                     corpus_name = job[0]
                     print process_name, "Received corpus", corpus_name
                     lda_object = job[1]
-                    # lda_object.run_LDA()
                     lda_object.run_vb()
                     corpus_list.append([corpus_name, lda_object, 0])
-                    current_lda_object_index = len(corpus_list) - 1
-                    
+                    current_lda_object_index = len(corpus_list) - 1                  
                     result_q.put([corpus_name,lda_object.beta_matrix])
-                    # result_not_put = True
-                    # while result_not_put:
-                    #     try:
-                    #         result_q.put_nowait([corpus_name,lda_object.beta_matrix])
-                    #         result_not_put = False
-                    #     except:
-                    #         result_not_put = True
-
-                    #print process_name, "sent corpus", corpus_name
                     
 
                 elif job[0].startswith("Finished"):
@@ -113,8 +102,7 @@ def LDA_worker(job_q, result_q):
                     filename = corpus_name + ".dict"
                     result_not_put = True
                     result_q.put([corpus_name, filename, lda_object.make_dictionary()])
-                    print corpus_name, " finished"
-                    
+                    print corpus_name, " finished"                  
                     corpus_count += 1
                     if corpus_count >= len(corpus_list):
                         return
@@ -129,31 +117,15 @@ def LDA_worker(job_q, result_q):
 
                     # if processor is ahead of others then put back job and wait 3 seconds
                     if current_iteration > job[2]:
-                        result_not_put = True
-                        job_q.put(job)
-                        # while result_not_put:
-                        #     try:
-                        #         job_q.put_nowait(job)
-                        #         result_not_put = False
-                        #     except:
-                        #         result_not_put = True
-                        
+                        job_q.put(job)                       
                         time.sleep(3)
                         pass
 
                     else:
-                        # lda_object.run_LDA()
                         lda_object.run_vb(initialise=False)
                         current_corpus[2] +=1
                         result_not_put = True
                         result_q.put([corpus_name, lda_object.beta_matrix])
-                        # while result_not_put:
-                        #     try:
-                        #         result_q.put_nowait([corpus_name, lda_object.beta_matrix])
-                        #         result_not_put = False
-                        #     except:
-                        #         result_not_put = True
-                        
 
                 else:
                     print "Error " + str(job[0])
