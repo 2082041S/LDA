@@ -110,9 +110,9 @@ def LDA_worker(job_q, result_q):
                     current_corpus = corpus_list[current_lda_object_index]
                     corpus_name = current_corpus[0]
                     lda_object = current_corpus[1]
-                    filename = corpus_name + ".p"
+                    filename = corpus_name + ".dict"
                     result_not_put = True
-                    result_q.put([corpus_name, filename, lda_object.make_dictionary(filename=filename)])
+                    result_q.put([corpus_name, filename, lda_object.make_dictionary()])
                     print corpus_name, " finished"
                     
                     corpus_count += 1

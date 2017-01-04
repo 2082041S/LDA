@@ -93,10 +93,10 @@ def runserver(port):
     new_beta = np.zeros((number_of_topics, vocabulary_size))
     it =0
     no_result = True
-    convergence_number = 1
+    convergence_number = 0.01
     beta_diff = number_of_topics
 
-    while beta_diff >convergence_number:
+    while beta_diff > convergence_number:
         processor_names_received =[]
         beta_sum = np.zeros((number_of_topics, vocabulary_size))
 
