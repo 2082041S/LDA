@@ -84,6 +84,9 @@ def runserver(port):
             else:
                 processor_names_received.append(name)
             beta = result[1]
+            if np.isnan(beta[0][0]):
+                print "Corpus name: ",name
+                print "First element of beta: ",beta[0][0]
             beta_sum += beta
             #print processor_names_received
 

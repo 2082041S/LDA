@@ -4,6 +4,7 @@ import multiprocessing
 from multiprocessing.managers import SyncManager
 import time
 from Queue import Queue as _Queue
+import numpy as np
 
 import sys
 
@@ -119,12 +120,16 @@ def LDA_worker(job_q, result_q):
                     if current_iteration > job[2]:
                         job_q.put(job)                       
                         time.sleep(3)
+                        print corpus_name," too fast"
                         pass
 
                     else:
                         lda_object.run_vb(initialise=False)
                         current_corpus[2] +=1
                         result_not_put = True
+                        if np.isnan(lda_object.beta_matrix[0][0]):
+                            print "Corpus name",corpus_name
+                            print "First element of beta matrix", lda_object.beta_matrix[0][0]
                         result_q.put([corpus_name, lda_object.beta_matrix])
 
                 else:
