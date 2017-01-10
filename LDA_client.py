@@ -109,11 +109,13 @@ def LDA_worker(job_q, result_q):
                         return
 
                 elif corpus_received and job[0].startswith("beta"):
+                    new_beta = job[1]
                     current_lda_object_index  = (current_lda_object_index + 1) % len(corpus_list)
                     current_corpus = corpus_list[current_lda_object_index]
                     current_iteration = current_corpus[2]
                     corpus_name = current_corpus[0]
                     lda_object = current_corpus[1]
+                    lda_object.beta_matrix = new_beta
                     print corpus_name, current_iteration ,job[2]
 
                     # if processor is ahead of others then put back job and wait 3 seconds
