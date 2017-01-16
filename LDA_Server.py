@@ -42,8 +42,33 @@ def runserver(port):
     print "Start"
     corpus_list_dict = pickle.load(open("corpus.p", "rb"))
     print "Received corpus"
-    vocabulary = pickle.load(open("vocabulary.p", "rb"))
-    print "Received vocabulary"
+    vocabulary_dict = {}
+    for corpus_name in corpus_list_dict:
+        corpus = corpus_list_dict[corpus_name] 
+        word_document_count={}
+        for document in corpus:
+            for word in corpus[document]:
+                vocabulary_dict[word] = True
+    #             if word not in word_document_count:
+    #                 word_document_count[word] = {}
+    #             if document not in word_document_count[word]:
+    #                 word_document_count[word][document] = True
+
+    #     for word in word_document_count:
+    #         if (word not in vocabulary_dict) and (len(word_document_count[word]) > 10):
+    #             vocabulary_dict[word] = True 
+    
+    # for corpus_name in corpus_list_dict:
+    #     corpus = corpus_list_dict[corpus_name] 
+    #     for document in corpus:
+    #         new_doc = {}
+    #         for word in corpus[document]:
+    #             if word in vocabulary_dict:
+    #                 new_doc[word] = corpus[document][word]
+    #         corpus[document] = new_doc
+
+    vocabulary = vocabulary_dict.keys()
+    print "Created vocabulary of size",len(vocabulary)
     vocabulary_size = len(vocabulary)
     word_index = {}
     for pos in range (vocabulary_size):
@@ -54,14 +79,17 @@ def runserver(port):
     shared_job_q = manager.get_job_q()
     shared_result_q = manager.get_result_q()
     corpus_names = []
+    corpuses_sent = {}
 
-
+    corpus_response_times = {}
     start_time = time.time()
     for name in corpus_list_dict:
         corpus_name = name + "_LDA_result"
         corpus_names.append(corpus_name)
+        corpus_response_times[corpus_name] = 0
         lda_object = VariationalLDA(corpus_list_dict[name], number_of_topics, 0.1, 1, word_index= word_index)
         shared_job_q.put([corpus_name,lda_object]) 
+        corpuses_sent[corpus_name] = True
 
     print corpus_names
     new_beta = np.zeros((number_of_topics, vocabulary_size))
@@ -69,26 +97,48 @@ def runserver(port):
     no_result = True
     convergence_number = 0.01
     beta_diff = number_of_topics
+    waiting_time = 90
 
     while beta_diff > convergence_number:
         processor_names_received =[]
         beta_sum = np.zeros((number_of_topics, vocabulary_size))
-
+        corpus_response_times = dict.fromkeys(corpus_response_times, 0)
+        begin_iteration_time = time.time()
         while set(corpus_names) != set(processor_names_received):
-            result = shared_result_q.get()
-            name = result[0]
-            #print "Received result", name
-            if name in processor_names_received:
-                shared_job_q.put_nowait(["beta", new_beta, it])
-                # print name
-            else:
-                processor_names_received.append(name)
-            beta = result[1]
-            if np.isnan(beta[0][0]):
-                print "Corpus name: ",name
-                print "First element of beta: ",beta[0][0]
-            beta_sum += beta
-            #print processor_names_received
+            try:
+                result = shared_result_q.get_nowait()
+                name = result[0]
+                #print "Received result", name
+                if name in processor_names_received:
+                    shared_job_q.put_nowait(["beta", new_beta, it])
+                    # print name
+                else:
+                    processor_names_received.append(name)
+                    corpus_response_times[name] = time.time()
+
+
+                beta = result[1]
+                if np.isnan(beta[0][0]):
+                    print "Corpus name: ",name
+                    print "First element of beta: ",beta[0][0]
+                beta_sum += beta
+                #print processor_names_received
+            except:
+
+                if it > 0 and (time.time() - begin_iteration_time > waiting_time):
+                    begin_iteration_time = time.time()
+                    waiting_time += 60
+                    for corpus_name in corpus_names:
+                        if corpus_response_times[corpus_name] == 0:
+                            name = corpus_name[:-11]
+                            print "Client handling corpus ",corpus_name, " crashed" , it                     
+                            lda_object = VariationalLDA(corpus_list_dict[name], number_of_topics, 0.1, 1, word_index= word_index)
+                            lda_object.beta = new_beta
+                            #shared_job_q.put(["crashed_" +corpus_name, lda_object, it-1]) 
+                    time.sleep(10)
+
+
+                pass
 
         old_beta = new_beta
         row_sums = beta_sum.sum(axis=1)
@@ -141,9 +191,11 @@ def runserver(port):
     directory = cwd + "/results/"
     if not os.path.exists(directory):
         os.makedirs(directory)
-    pickle.dump(files.keys(), open(directory +"corpus_list.p", "wb"))
-    for file in files:
-        pickle.dump(files[file], open(directory + file, "wb"))
+    corpus_dict = {}
+    corpus_dict["individual_lda"]= files.keys()
+    pickle.dump(corpus_dict, open(directory +"corpus_dict.p", "wb"))
+    for file_name in files:
+        pickle.dump(files[file_name], open(directory + file_name + ".dict", "wb"))
     end_time = time.time()
     print end_time - start_time, " seconds"
     time.sleep(5)

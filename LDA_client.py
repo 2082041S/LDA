@@ -84,23 +84,30 @@ def LDA_worker(job_q, result_q):
             try:
                 job = job_q.get_nowait()
 
-                if job[0].endswith("result"):
+                if job[0].endswith("result"):   
+                    initial_iteration = 0
                     corpus_received = True
                     corpus_name = job[0]
+                    if corpus_name.startswith("crashed_"):
+                        corpus_name= corpus_name[8:]
+                        server_iteration = job[2]
+                        current_iteration = server_iteration
+                        initial_iteration = server_iteration
+
                     print process_name, "Received corpus", corpus_name
                     lda_object = job[1]
                     lda_object.run_vb()
-                    corpus_list.append([corpus_name, lda_object, 0])
+                    corpus_list.append([corpus_name, lda_object, initial_iteration])
                     current_lda_object_index = len(corpus_list) - 1                  
                     result_q.put([corpus_name,lda_object.beta_matrix])
-                    
+                    print process_name, "sent back first beta of", corpus_name, initial_iteration
 
                 elif job[0].startswith("Finished"):
                     current_lda_object_index  = (current_lda_object_index + 1) % len(corpus_list)
                     current_corpus = corpus_list[current_lda_object_index]
                     corpus_name = current_corpus[0]
                     lda_object = current_corpus[1]
-                    filename = corpus_name + ".dict"
+                    filename = corpus_name
                     result_not_put = True
                     result_q.put([corpus_name, filename, lda_object.make_dictionary()])
                     print corpus_name, " finished"                  
@@ -116,23 +123,28 @@ def LDA_worker(job_q, result_q):
                     corpus_name = current_corpus[0]
                     lda_object = current_corpus[1]
                     lda_object.beta_matrix = new_beta
-                    print corpus_name, current_iteration ,job[2]
+                    server_iteration = job[2]
+                    print corpus_name, current_iteration ,server_iteration
 
                     # if processor is ahead of others then put back job and wait 3 seconds
-                    if current_iteration > job[2]:
-                        job_q.put(job)                       
-                        time.sleep(3)
-                        print corpus_name," too fast"
-                        pass
+                    if current_iteration > server_iteration:
+                        too_fast_count +=1
+                        if too_fast_count > 1:
+                            print "Extra Beta floating due to client crash"
+                        else:
+                            job_q.put(job)                       
+                            time.sleep(5)
+                            print corpus_name," too fast"
 
                     else:
                         lda_object.run_vb(initialise=False)
-                        current_corpus[2] +=1
+                        current_corpus[2] += 1
                         result_not_put = True
                         if np.isnan(lda_object.beta_matrix[0][0]):
                             print "Corpus name",corpus_name
                             print "First element of beta matrix", lda_object.beta_matrix[0][0]
                         result_q.put([corpus_name, lda_object.beta_matrix])
+                        too_fast_count = 0
 
                 else:
                     print "Error " + str(job[0])
