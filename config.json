@@ -1,0 +1,18 @@
+{
+    "Connection":{
+        "host":"localhost",
+        "port":"8005",
+        "authkey":"secret password"
+    },
+    "LDA":{
+        "input_files_directory_paths":
+		[
+            "C:\\LDA\\LDA\\dicts"
+        ],
+        "K":"500",
+		"eta":"0.1",
+		"alpha":"1",
+		"normalise":"1000"
+    }
+} 
+    
