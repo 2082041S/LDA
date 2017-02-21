@@ -1,18 +1,15 @@
-import socket
 from functools import partial
 from Queue import Queue as _Queue
 from multiprocessing.managers import SyncManager
 import time
 import cPickle as pickle
 import os
-import sys
-import pdb
 import numpy as np
-import json
-
 import LDA_Config
 from lda import VariationalLDA
 
+# Setting up the distributed system is inspired from:
+# http://eli.thegreenplace.net/2012/01/24/distributed-computing-in-python-with-multiprocessing
 
 # This class implements a pickable queue. It is needed for running the
 # system shares queue.Queue objects which cannot be pickled by Windows
@@ -348,7 +345,7 @@ class Master:
             lda_object = VariationalLDA(self.corpus_dict[name], K=self.K, eta=self.config_data.eta,
                                         alpha=self.config_data.alpha, word_index=self.word_index,
                                         normalise=self.config_data.normalise)
-            corpus_object = [corpus_name, lda_object]
+            corpus_object = ["corpus", corpus_name, lda_object]
             self.send_object_to_workers(corpus_object)
         return corpus_names
 
@@ -356,7 +353,7 @@ class Master:
     # them from shared_job_q. If crash_assumed_timer econds have passed since last
     # result has been gotten then assume that crash happened and send back missing
     # corpuses
-    def collect_betas_from_workers(self, corpus_names, new_beta, it, crash_assumed_timer):
+    def collect_betas_from_workers(self, corpus_names, new_beta, it, crash_assumed_timer, single_threaded_LDA_timer):
         beta_sum = np.zeros((self.K, len(self.vocabulary)))
         count = 1
         begin_iteration_time = time.time()
@@ -379,6 +376,7 @@ class Master:
                     corpus_response_times[name] = time.time()
 
                 beta = result[1]
+                single_threaded_LDA_timer += result[2]
                 beta_sum += beta
                 # print processor_names_received
             except:
@@ -397,7 +395,7 @@ class Master:
                                                         alpha=self.config_data.alpha, word_index=self.word_index,
                                                         normalise=self.config_data.normalise)
                             # signal client that corpus sent crashed
-                            crashed_corpus_object = ["crashed_" + corpus_name, lda_object, it, new_beta]
+                            crashed_corpus_object = ["corpus", "crashed_" + corpus_name, lda_object, it, new_beta]
                             self.send_object_to_workers(crashed_corpus_object)
                     time.sleep(10)
 
@@ -438,9 +436,10 @@ class Master:
                 files[name] = result[1]
         return files
 
-    #
+    # runs multifile LDA algorithm and outputs the results
     def runserver(self):
-        start_time = time.time()
+        single_threaded_LDA_timer = time.time()
+        start_execution_time = time.time()
         corpus_names = self.send_corpus_objects_to_workers()
         print corpus_names
 
@@ -453,8 +452,7 @@ class Master:
             iteration_start = time.time()
             print "Starting iteration", it
 
-            beta_sum = self.collect_betas_from_workers(corpus_names,
-                                                       new_beta, it, crash_assumed_timer)
+            beta_sum = self.collect_betas_from_workers(corpus_names, new_beta, it, crash_assumed_timer, single_threaded_LDA_timer)
             old_beta = new_beta
             new_beta = normalise_beta(beta_sum)
             beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
@@ -466,15 +464,19 @@ class Master:
             print "iteration: ", it, "beta difference: ", \
                 beta_diff, "seconds taken:", time.time() - iteration_start
             it += 1
-
         print "Finished converging Beta " + str(beta_diff)
         self.signal_workers_to_finish()
         files = self.collect_output_files_from_workers(corpus_names)
         print "Got back all files " + str(len(files))
-        create_output_files(files)
 
-        end_time = time.time()
-        print end_time - start_time, " seconds"
+        create_output_files_timer = time.time()
+        create_output_files(files)
+        create_output_files_execution_time = time.time() - create_output_files_timer
+        single_threaded_LDA_timer += create_output_files_execution_time
+
+        end_execution_time = time.time()
+        print "Parallel LDA ran in", end_execution_time - start_execution_time, "seconds "
+        print "Single Threaded LDA would have run in", single_threaded_LDA_timer, "seconds"
         time.sleep(5)
 
         self.manager.shutdown()
