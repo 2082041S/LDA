@@ -265,7 +265,7 @@ class Master:
         max_vocabulary_length = 50000
         init_length = len(self.vocabulary)
         # words that appear less than this value are removed
-        document_appearance_min_threshold = 10
+        document_appearance_min_threshold = 5
 
         if len(self.vocabulary) > max_vocabulary_length:
             # create a smaller new vocabulary
@@ -362,6 +362,7 @@ class Master:
         processor_names_received = []
         while set(corpus_names) != set(processor_names_received):
             try:
+
                 result = self.shared_result_q.get_nowait()
                 name = result[0]
                 print "Received " + name + " " + str(count) + "/" + str(len(corpus_names))
@@ -399,7 +400,7 @@ class Master:
                             self.send_object_to_workers(crashed_corpus_object)
                     time.sleep(10)
 
-        return beta_sum
+        return beta_sum, single_threaded_LDA_timer
 
     # Puts a beta_object for each corpus into the shared_job_q
     def send_new_betas_to_workers(self, new_beta, it):
@@ -408,8 +409,7 @@ class Master:
             new_beta_object = ["beta", new_beta, it]
             self.send_object_to_workers(new_beta_object)
             count += 1
-            print "Sent", corpus_name, str(count) + "/" + str(len(self.corpus_dict)), \
-                self.shared_job_q.qsize(), self.shared_job_q.full()
+            print "Sent", corpus_name, str(count) + "/" + str(len(self.corpus_dict))
 
     # workers will stop working and send back their results
     # once they received the "Finished" signal
@@ -438,7 +438,7 @@ class Master:
 
     # runs multifile LDA algorithm and outputs the results
     def runserver(self):
-        single_threaded_LDA_timer = time.time()
+        single_threaded_LDA_timer = 0
         start_execution_time = time.time()
         corpus_names = self.send_corpus_objects_to_workers()
         print corpus_names
@@ -452,7 +452,8 @@ class Master:
             iteration_start = time.time()
             print "Starting iteration", it
 
-            beta_sum = self.collect_betas_from_workers(corpus_names, new_beta, it, crash_assumed_timer, single_threaded_LDA_timer)
+            beta_sum, single_threaded_LDA_timer = self.collect_betas_from_workers(corpus_names, new_beta, it, crash_assumed_timer, single_threaded_LDA_timer)
+            print "single threaded LDA timer:",int(single_threaded_LDA_timer),"seconds"
             old_beta = new_beta
             new_beta = normalise_beta(beta_sum)
             beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
@@ -475,8 +476,8 @@ class Master:
         single_threaded_LDA_timer += create_output_files_execution_time
 
         end_execution_time = time.time()
-        print "Parallel LDA ran in", end_execution_time - start_execution_time, "seconds "
-        print "Single Threaded LDA would have run in", single_threaded_LDA_timer, "seconds"
+        print "Parallel LDA ran in", int(end_execution_time - start_execution_time), "seconds "
+        print "Single Threaded LDA would have run in", int(single_threaded_LDA_timer), "seconds"
         time.sleep(5)
 
         self.manager.shutdown()

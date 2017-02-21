@@ -61,7 +61,7 @@ def send_object_to_master(result_q, object):
     result_not_put = True
     while result_not_put:
         if not result_q.full():
-            result_q.put_nowait(object)
+            result_q.put(object)
             result_not_put = False
         else:
             result_not_put = True
@@ -135,14 +135,17 @@ def update_corpus_betas_and_send_new_betas_to_master(result_q, job, process_name
         else:
             pre_LDA = time.time()
             lda_object.run_vb(initialise=False, verbose=False)
+            LDA_execution_time = time.time() - pre_LDA
             print process_name, "finished running LDA on", corpus_name, \
                 "in", time.time() - pre_LDA, " seconds"
-            beta_object = [corpus_name, lda_object.beta_matrix]
+
+            beta_object = [corpus_name, lda_object.beta_matrix, LDA_execution_time]
             send_object_to_master(result_q, beta_object)
             print corpus_name, current_iteration, server_iteration
             current_iteration += 1
             corpus[2] = current_iteration
 
+    return corpus_list
 
 def update_corpus_list_and_send_new_beta_to_master(result_q, process_name, corpus_list ,
                                                    lda_object, corpus_name, current_iteration):
@@ -156,6 +159,7 @@ def update_corpus_list_and_send_new_beta_to_master(result_q, process_name, corpu
     beta_object = [corpus_name, lda_object.beta_matrix, LDA_execution_time]
     send_object_to_master(result_q, beta_object)
     print process_name, "sent back first beta of", corpus_name, current_iteration
+    return corpus_list
 
 # in case of client crash the server sent:
 # ["corpus", "crashed_" + corpus_name, lda_object, server_iteration, new_beta]
@@ -184,7 +188,7 @@ def LDA_worker(job_q, result_q):
 
     while True:
         if not job_q.full():
-            job = job_q.get_nowait()
+            job = job_q.get()
             # job_name indicates the object the server sent
             # i.e. a corpus; beta or "finished"(signal to finish)
             job_name = job[0]
@@ -193,8 +197,8 @@ def LDA_worker(job_q, result_q):
                 corpus_received = True
                 corpus_name, lda_object, current_iteration = get_corpus_from_master(job)
                 print process_name, "Received corpus", corpus_name
-                update_corpus_list_and_send_new_beta_to_master(result_q, process_name, corpus_list ,
-                                                   lda_object, corpus_name, current_iteration)
+                corpus_list = update_corpus_list_and_send_new_beta_to_master(result_q, process_name, 
+                                                    corpus_list ,lda_object, corpus_name, current_iteration)
 
             # must ensure that client has corpus to work on
             # before computing new_betas
@@ -202,8 +206,9 @@ def LDA_worker(job_q, result_q):
                 new_beta = job[1]
                 server_iteration = job[2]
                 get_beta_for_each_extra_corpus(job_q, corpus_list)
-                update_corpus_betas_and_send_new_betas_to_master(result_q, job, process_name,corpus_list,
-                                                                 new_beta, server_iteration)
+                corupus_list = update_corpus_betas_and_send_new_betas_to_master(result_q, job, 
+                                                                process_name,corpus_list,
+                                                                new_beta, server_iteration)
 
             elif job_name.startswith("Finished"):
                 signal_all_corpuses_to_send_results(result_q, corpus_list)
