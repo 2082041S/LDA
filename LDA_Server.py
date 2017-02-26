@@ -7,6 +7,7 @@ import os
 import numpy as np
 import LDA_Config
 from lda import VariationalLDA
+import pdb
 
 # Setting up the distributed system is inspired from:
 # http://eli.thegreenplace.net/2012/01/24/distributed-computing-in-python-with-multiprocessing
@@ -55,11 +56,14 @@ class JobQueueManager(SyncManager):
 def make_server_manager(host, port, authkey):
     job_q = Queue()
     result_q = Queue()
-
+    server_iteration_q = Queue()
+    client_crash_q = Queue()
     # get_job and get_result_q return synchronized proxies for the actual Queue
     # objects. Partial is used instead of lambda because lambda is not pickable
     JobQueueManager.register('get_job_q', callable=partial(get_q, job_q))
     JobQueueManager.register('get_result_q', callable=partial(get_q, result_q))
+    JobQueueManager.register('get_server_iteration_q', callable=partial(get_q, server_iteration_q))
+    JobQueueManager.register('get_client_crash_q', callable=partial(get_q, client_crash_q))
     # The manager listens at the given port and requires an
     # authentication password from the client
     manager = JobQueueManager(address=(host, port), authkey=authkey)
@@ -176,6 +180,8 @@ class Master:
                                            self.config_data.authkey)
         self.shared_job_q = self.manager.get_job_q()
         self.shared_result_q = self.manager.get_result_q()
+        self.server_iteration_q = self.manager.get_server_iteration_q()
+        self.client_crash_q = self.manager.get_client_crash_q()
         self.corpus_dict = load_corpus_dict(self.config_data.directory_paths)
         print "Loaded input files"
         self.vocabulary = self.construct_vocabulary()
@@ -265,7 +271,7 @@ class Master:
         max_vocabulary_length = 50000
         init_length = len(self.vocabulary)
         # words that appear less than this value are removed
-        document_appearance_min_threshold = 5
+        document_appearance_min_threshold = 4
 
         if len(self.vocabulary) > max_vocabulary_length:
             # create a smaller new vocabulary
@@ -360,30 +366,39 @@ class Master:
         first_result_time = 0
         corpus_response_times = dict.fromkeys(corpus_names, 0)
         processor_names_received = []
+        iteration_execution_time = 0                
         while set(corpus_names) != set(processor_names_received):
             try:
-
+                # result = [corpus_name, beta, LDA_execution_time]
                 result = self.shared_result_q.get_nowait()
+
                 name = result[0]
-                print "Received " + name + " " + str(count) + "/" + str(len(corpus_names))
-                if name in processor_names_received:
-                    self.shared_job_q.put_nowait(["beta", new_beta, it])
-                    # print name
+                
+                if name in processor_names_received:  
+                    print "Already received", name 
                 else:
+                    print "Received " + name + " " + str(count) + "/" + str(len(corpus_names))
                     count += 1
                     if count == 1:
                         first_result_time = time.time()
                     processor_names_received.append(name)
                     corpus_response_times[name] = time.time()
 
-                beta = result[1]
-                single_threaded_LDA_timer += result[2]
-                beta_sum += beta
-                # print processor_names_received
+                    beta = result[1]
+                    LDA_execution_time = result[2]
+                    pre_beta_sum = time.time()
+                    beta_sum += beta
+                    LDA_execution_time += (time.time() - pre_beta_sum)
+                    iteration_execution_time += LDA_execution_time
+                    # print processor_names_received
             except:
                 client_crashed_assumed = check_if_worker_crashed(begin_iteration_time, first_result_time,
                                                                  crash_assumed_timer)
+                
                 if client_crashed_assumed:
+                    
+                    begin_iteration_time = time.time()
+                    first_result_time = 0
                     # if crash occured it will take system longer to run as
                     # there is one less worker. Increase crash_assumed_timer
                     crash_assumed_timer += 60
@@ -396,17 +411,22 @@ class Master:
                                                         alpha=self.config_data.alpha, word_index=self.word_index,
                                                         normalise=self.config_data.normalise)
                             # signal client that corpus sent crashed
-                            crashed_corpus_object = ["corpus", "crashed_" + corpus_name, lda_object, it, new_beta]
-                            self.send_object_to_workers(crashed_corpus_object)
-                    time.sleep(10)
-
-        return beta_sum, single_threaded_LDA_timer
+                            crashed_corpus_object = ["corpus", "crashed_" + corpus_name, lda_object, new_beta]
+                            self.send_object_to_workers(crashed_corpus_object)       
+                    self.client_crash_q.put("crash")
+                    print "CRASH"
+                    time.sleep(3)
+                    # reset crash if previous iteration crashed
+                    if not self.client_crash_q.empty():
+                        self.client_crash_q.get()
+        
+        return beta_sum, iteration_execution_time
 
     # Puts a beta_object for each corpus into the shared_job_q
-    def send_new_betas_to_workers(self, new_beta, it):
+    def send_new_betas_to_workers(self, new_beta, it, average_LDA_execution_time):
         count = 0
         for corpus_name in self.corpus_dict:
-            new_beta_object = ["beta", new_beta, it]
+            new_beta_object = ["beta", new_beta, it, average_LDA_execution_time]
             self.send_object_to_workers(new_beta_object)
             count += 1
             print "Sent", corpus_name, str(count) + "/" + str(len(self.corpus_dict))
@@ -442,29 +462,36 @@ class Master:
         start_execution_time = time.time()
         corpus_names = self.send_corpus_objects_to_workers()
         print corpus_names
-
-        crash_assumed_timer = 360
+        crash_assumed_timer = 300
         new_beta = np.zeros((self.K, len(self.vocabulary)))
         it = 0
         convergence_number = 0.01
         beta_diff = self.K
         while beta_diff > convergence_number:
+
             iteration_start = time.time()
             print "Starting iteration", it
 
-            beta_sum, single_threaded_LDA_timer = self.collect_betas_from_workers(corpus_names, new_beta, it, crash_assumed_timer, single_threaded_LDA_timer)
-            print "single threaded LDA timer:",int(single_threaded_LDA_timer),"seconds"
+            beta_sum, iteration_execution_time = self.collect_betas_from_workers(corpus_names, new_beta, it, crash_assumed_timer, single_threaded_LDA_timer)
+            single_threaded_LDA_timer += iteration_execution_time
+            average_LDA_execution_time = iteration_execution_time / len(corpus_names)
+            
             old_beta = new_beta
             new_beta = normalise_beta(beta_sum)
             beta_diff = np.sum(abs(np.subtract(new_beta, old_beta)))
 
             print "sending new_betas to workers"
             if beta_diff > convergence_number:
-                self.send_new_betas_to_workers(new_beta, it)
+                self.send_new_betas_to_workers(new_beta, it, average_LDA_execution_time)
 
+            print "single threaded LDA timer:",int(iteration_execution_time),"seconds"
             print "iteration: ", it, "beta difference: ", \
-                beta_diff, "seconds taken:", time.time() - iteration_start
+                beta_diff, "seconds taken:", int(time.time() - iteration_start)
+
+            if it >0:    
+                self.server_iteration_q.put(it)        
             it += 1
+
         print "Finished converging Beta " + str(beta_diff)
         self.signal_workers_to_finish()
         files = self.collect_output_files_from_workers(corpus_names)
