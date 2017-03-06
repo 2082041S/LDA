@@ -1,18 +1,23 @@
 {
     "Connection":{
-        "host":"localhost",
-        "port":"8005",
+        "host":"bo1028-5-03u.dcs.gla.ac.uk",
+        "port":"8006",
         "authkey":"secret password"
     },
     "LDA":{
         "input_files_directory_paths":
 		[
-            "C:\\LDA\\LDA\\dicts"
+            "/users/level4/2082041s/LDA/in/set_2_parsed"
         ],
-        "K":"500",
+		"e_step_its":"5",
+        "K":"100",
 		"eta":"0.1",
 		"alpha":"1",
 		"normalise":"1000"
-    }
+    },
+	"Master":{
+		"max_vocabulary_length" : "50000",
+        "document_appearance_min_threshold":"4"
+	}
 } 
     
