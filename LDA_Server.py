@@ -174,7 +174,7 @@ def check_if_worker_crashed(begin_iteration_time, first_result_time, crash_assum
 
 class Master:
     def __init__(self):
-        self.config_data = LDA_Config.get_config_data()
+        self.config_data = LDA_Config.get_server_data()
         self.manager = make_server_manager(self.config_data.host,
                                            self.config_data.port,
                                            self.config_data.authkey)
@@ -187,7 +187,13 @@ class Master:
         self.vocabulary = self.construct_vocabulary()
         self.test_input_data()
         print "Constructed vocabulary of size", len(self.vocabulary)
-        self.reduce_vocabulary_if_needed()
+
+        # words that appear less than this value are removed
+        document_appearance_min_threshold = self.config_data.document_appearance_min_threshold
+        # vocabulary of size greater than this risk breaking the system
+        max_vocabulary_length = self.config_data.max_vocabulary_length
+        self.reduce_vocabulary_if_needed(document_appearance_min_threshold, max_vocabulary_length)
+
         self.word_index = self.calculate_word_index()
         self.K = self.config_data.K
 
@@ -266,12 +272,10 @@ class Master:
 
     # if there are too many words in the vocabulary then
     # the system must remove words that appear infrequently in documents
-    def reduce_vocabulary_if_needed(self):
-        # vocabulary of size greater than this risk breaking the system
-        max_vocabulary_length = 50000
+    def reduce_vocabulary_if_needed(self, document_appearance_min_threshold, max_vocabulary_length):
         init_length = len(self.vocabulary)
-        # words that appear less than this value are removed
-        document_appearance_min_threshold = 4
+        number_of_words = 0
+        number_of_reduced_words = 0
 
         if len(self.vocabulary) > max_vocabulary_length:
             # create a smaller new vocabulary
@@ -298,7 +302,15 @@ class Master:
                     for word in corpus[document]:
                         if word in new_vocabulary_dict:
                             new_doc[word] = corpus[document][word]
+
+                    number_of_words += len(corpus[document])
+                    number_of_reduced_words += len(new_doc)
+                    # print len(corpus[document]), len(new_doc)
                     corpus[document] = new_doc
+
+
+            print "Reduced total number of words from", number_of_words, "to", number_of_reduced_words
+            print number_of_words/number_of_reduced_words, "times less words"
             self.vocabulary = new_vocabulary_dict.keys()
             print "Reduced vocabulary size from ", init_length, " to ", len(self.vocabulary)
 

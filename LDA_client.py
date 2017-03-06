@@ -21,13 +21,13 @@ class ServerQueueManager(SyncManager):
 # Accesses server through manager object and gets the
 # queues. It then allocations work for every CPU the
 # computer is asked to use
-def run_client(host, port, authkey, number_of_cores):
+def run_client(host, port, authkey, number_of_cores, e_step_its):
     manager = make_client_manager(host, port, authkey)
     job_q = manager.get_job_q()
     result_q = manager.get_result_q()
     server_iteration_q = manager.get_server_iteration_q()
     client_crash_q = manager.get_client_crash_q()
-    mp_work_allocator(job_q, result_q, server_iteration_q, client_crash_q, number_of_cores)
+    mp_work_allocator(job_q, result_q, server_iteration_q, client_crash_q, number_of_cores, e_step_its)
 
 
 # Create a manager for a client. This manager connects to a server on the
@@ -48,12 +48,12 @@ def make_client_manager(host, port, authkey):
 # Split the work with jobs in shared_job_q and results in
 # shared_result_q into several processes. Launch each process with
 # LDA_worker as the worker function, and wait until all are finished.
-def mp_work_allocator(shared_job_q, shared_result_q, server_iteration_q, client_crash_q, nprocs):
+def mp_work_allocator(shared_job_q, shared_result_q, server_iteration_q, client_crash_q, nprocs, e_step_its):
     procs = []
     for _ in range(nprocs):
         proc = multiprocessing.Process(
             target=LDA_worker,
-            args=(shared_job_q, shared_result_q, server_iteration_q, client_crash_q))
+            args=(shared_job_q, shared_result_q, server_iteration_q, client_crash_q, e_step_its))
         procs.append(proc)
         proc.start()
 
@@ -126,7 +126,7 @@ def signal_all_corpuses_to_send_results(result_q, corpus_list):
 
 
 def update_corpus_betas_and_send_new_betas_to_master(result_q, job_q, job, 
-                                                     corpus_list, new_beta):
+                                                     corpus_list, new_beta, e_step_its):
     for corpus in corpus_list:
         corpus_name = corpus[0]
         lda_object = corpus[1]
@@ -134,7 +134,7 @@ def update_corpus_betas_and_send_new_betas_to_master(result_q, job_q, job,
 
         pre_LDA = time.time()
         #print process_name, corpus_name
-        lda_object.run_vb(initialise=False, verbose=False)
+        lda_object.run_vb(initialise=False, e_step_its= e_step_its, verbose=False)
         LDA_execution_time = time.time() - pre_LDA
         print "Finished running LDA on", corpus_name, \
            "in", time.time() - pre_LDA, " seconds"
@@ -145,9 +145,9 @@ def update_corpus_betas_and_send_new_betas_to_master(result_q, job_q, job,
     return corpus_list
 
 def update_corpus_list_and_send_new_beta_to_master(result_q, process_name, corpus_list ,
-                                                   lda_object, corpus_name):
+                                                   lda_object, corpus_name, e_step_its):
     pre_LDA = time.time()
-    lda_object.run_vb(verbose=False, initialise=True)
+    lda_object.run_vb(verbose=False, e_step_its= e_step_its, initialise=True)
     LDA_execution_time = time.time() - pre_LDA
     print process_name, "finished running LDA on", corpus_name, \
        "in", LDA_execution_time, " seconds"
@@ -173,7 +173,7 @@ def get_corpus_from_master(job, server_iteration_q):
     return corpus_name, lda_object
 
 
-def LDA_worker(job_q, result_q, server_iteration_q, client_crash_q):
+def LDA_worker(job_q, result_q, server_iteration_q, client_crash_q, e_step_its):
     process_name = multiprocessing.current_process().name
     # list of corpuses that the processor handles
     corpus_list = []
@@ -204,17 +204,21 @@ def LDA_worker(job_q, result_q, server_iteration_q, client_crash_q):
                     corpus_name, lda_object = get_corpus_from_master(job, server_iteration_q)
                     #print process_name, "Received corpus", corpus_name
                     corpus_list = update_corpus_list_and_send_new_beta_to_master(result_q, process_name, 
-                                                        corpus_list ,lda_object, corpus_name)
+                                                        corpus_list ,lda_object, corpus_name, e_step_its)
 
                 # must ensure that client has corpus to work on
                 # before computing new_betas
-                elif corpus_received and job_name.startswith("beta"):
-                    print "BETA", client_crashed, process_current_iteration
-                    new_beta = job[1]
-                    get_beta_for_each_extra_corpus(job_q, corpus_list)
-                    corpus_list = update_corpus_betas_and_send_new_betas_to_master(result_q, job_q,  
-                                                                        job, corpus_list, new_beta)
-                    process_current_iteration +=1
+                elif job_name.startswith("beta"):
+                    if corpus_received:
+                        print "Iteration", process_current_iteration
+                        new_beta = job[1]
+                        get_beta_for_each_extra_corpus(job_q, corpus_list)
+                        corpus_list = update_corpus_betas_and_send_new_betas_to_master(result_q, job_q,  
+                                                                            job, corpus_list, new_beta, e_step_its)
+                        process_current_iteration +=1
+                    else: 
+                        print process_name, "lacks a corpus and hence disconnects"
+                        send_object_back_to_workers(job_q, job)
 
                 elif job_name.startswith("Finished"):
                     signal_all_corpuses_to_send_results(result_q, corpus_list)
@@ -245,16 +249,17 @@ def get_input_data():
     # default value for number_of_cores is the
     # number of CPU the computer can handle
     number_of_cores = multiprocessing.cpu_count()
-    connection_data = LDA_Config.get_connection_data()
-    host = connection_data.host
-    port = connection_data.port
-    authkey = connection_data.authkey
+    client_config_data = LDA_Config.get_client_data()
+    host = client_config_data.host
+    port = client_config_data.port
+    authkey = client_config_data.authkey
+    e_step_its = client_config_data.e_step_its
     if len(sys.argv) == 2:
         number_of_cores = int(sys.argv[1])
 
-    return host, port, authkey, number_of_cores
+    return host, port, authkey, number_of_cores, e_step_its
 
 
 if __name__ == '__main__':
-    host, port, authkey, number_of_cores = get_input_data()
-    run_client(host, port, authkey, number_of_cores)
+    host, port, authkey, number_of_cores, e_step_its = get_input_data()
+    run_client(host, port, authkey, number_of_cores, e_step_its)
