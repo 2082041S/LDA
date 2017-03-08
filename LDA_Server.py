@@ -200,12 +200,18 @@ class Master:
     # creates vocabulary from corpora
     def construct_vocabulary(self):
         vocabulary_dict = {}
+        word_count = 0
+        document_count = 0
         for corpus_name in self.corpus_dict:
             corpus = self.corpus_dict[corpus_name]
+            document_count += len(corpus)
             for document in corpus:
+                word_count+=len(corpus[document])
                 for word in corpus[document]:
                     vocabulary_dict[word] = True
-
+        print "In total the corpora contains",document_count," documents and",word_count,"words"
+        print "On average",document_count/len(self.corpus_dict),"documents per corpus"
+        print "On average",word_count/document_count,"words per document"
         return vocabulary_dict.keys()
 
     def test_vocabulary_word_format(self):
