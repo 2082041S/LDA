@@ -44,7 +44,7 @@ def get_q(q):
 # for the synchronization of processes. JobQueueManager will
 # register a shared_job_q for the master to send work for the
 # clients and a shared_results_q for the workers to send back
-# results to the master.
+# results to the master and 2 shared queues for fault tolerance.
 # This class is at top level so that Queue can be pickled.
 class JobQueueManager(SyncManager):
     pass
@@ -176,27 +176,26 @@ def check_if_worker_crashed(begin_iteration_time, first_result_time, crash_assum
 class Master:
     def __init__(self):
         self.config_data = LDA_Config.get_server_data()
-        self.manager = make_server_manager(self.config_data.host,
+        self.corpus_dict = load_corpus_dict(self.config_data.directory_paths)
+        print "Loaded input files"
+        self.vocabulary = self.construct_vocabulary()
+        self.test_input_data()
+        print "Constructed vocabulary of size", len(self.vocabulary)
+        # words that appear less than this value are removed
+        document_appearance_min_threshold = self.config_data.document_appearance_min_threshold
+        # vocabulary of size greater than this risk breaking the system
+        max_vocabulary_length = self.config_data.max_vocabulary_length
+        self.reduce_vocabulary_if_needed(document_appearance_min_threshold, max_vocabulary_length)
+        self.word_index = self.calculate_word_index()
+        self.K = self.config_data.K
+		
+		self.manager = make_server_manager(self.config_data.host,
                                            self.config_data.port,
                                            self.config_data.authkey)
         self.shared_job_q = self.manager.get_job_q()
         self.shared_result_q = self.manager.get_result_q()
         self.server_iteration_q = self.manager.get_server_iteration_q()
         self.client_crash_q = self.manager.get_client_crash_q()
-        self.corpus_dict = load_corpus_dict(self.config_data.directory_paths)
-        print "Loaded input files"
-        self.vocabulary = self.construct_vocabulary()
-        self.test_input_data()
-        print "Constructed vocabulary of size", len(self.vocabulary)
-
-        # words that appear less than this value are removed
-        document_appearance_min_threshold = self.config_data.document_appearance_min_threshold
-        # vocabulary of size greater than this risk breaking the system
-        max_vocabulary_length = self.config_data.max_vocabulary_length
-        self.reduce_vocabulary_if_needed(document_appearance_min_threshold, max_vocabulary_length)
-
-        self.word_index = self.calculate_word_index()
-        self.K = self.config_data.K
 
     # creates vocabulary from corpora
     def construct_vocabulary(self):
@@ -492,7 +491,7 @@ class Master:
         new_beta = np.zeros((self.K, len(self.vocabulary)))
         it = 0
         convergence_number = 0.01
-        beta_diff = self.K
+        beta_diff = self.K # randomly chosen initial value
         while beta_diff > convergence_number:
 
             iteration_start = time.time()

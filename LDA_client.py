@@ -219,7 +219,6 @@ def LDA_worker(job_q, result_q, server_iteration_q, client_crash_q, e_step_its):
                 else:
                     time.sleep(0.01)
 
-    return
 
 
 # gets input data from configuration file
