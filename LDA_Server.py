@@ -199,7 +199,7 @@ class Master:
 
     # creates vocabulary from corpora
     def construct_vocabulary(self):
-        vocabulary_dict = {}
+        vocabulary = set()
         word_count = 0
         document_count = 0
         for corpus_name in self.corpus_dict:
@@ -208,11 +208,11 @@ class Master:
             for document in corpus:
                 word_count+=len(corpus[document])
                 for word in corpus[document]:
-                    vocabulary_dict[word] = True
+                    vocabulary.add(word)
         print "In total the corpora contains",document_count," documents and",word_count,"words"
         print "On average",document_count/len(self.corpus_dict),"documents per corpus"
         print "On average",word_count/document_count,"words per document"
-        return vocabulary_dict.keys()
+        return list(vocabulary)
 
     def test_vocabulary_word_format(self):
         success = True
@@ -335,7 +335,6 @@ class Master:
     # Object can be:
     # - corpus object so that the worker starts running LDA on it
     # - beta object for the worker to update its beta
-    # - crashed corpus object so that workers can work on it
     # - ["Finished"] signalling the worker to finish
     def send_object_to_workers(self, object):
         object_not_sent = True
@@ -378,15 +377,21 @@ class Master:
     # result has been gotten then assume that crash happened and send back missing
     # corpuses
     def collect_betas_from_workers(self, corpus_names, new_beta, it, crash_assumed_timer, single_threaded_LDA_timer):
+
         beta_sum = np.zeros((self.K, len(self.vocabulary)))
         count = 1
         begin_iteration_time = time.time()
         first_result_time = 0
-        corpus_response_times = dict.fromkeys(corpus_names, 0)
         processor_names_received = []
-        iteration_execution_time = 0                
+        iteration_execution_time = 0 
+
+        # empty crash_q if previous iteration crashed
+        if not self.client_crash_q.empty():
+            self.client_crash_q.get()     
+
         while set(corpus_names) != set(processor_names_received):
             try:
+
                 # result = [corpus_name, beta, LDA_execution_time]
                 result = self.shared_result_q.get_nowait()
 
@@ -400,7 +405,6 @@ class Master:
                     if count == 1:
                         first_result_time = time.time()
                     processor_names_received.append(name)
-                    corpus_response_times[name] = time.time()
 
                     beta = result[1]
                     LDA_execution_time = result[2]
@@ -414,29 +418,32 @@ class Master:
                                                                  crash_assumed_timer)
                 
                 if client_crashed_assumed:
-                    
+                    # server might have sent beta objects to crashed client
+                    # remove any objects from job queue
+                    while not self.shared_job_q.empty():
+                        extra_beta = self.shared_job_q.get()
+
                     begin_iteration_time = time.time()
                     first_result_time = 0
                     # if crash occured it will take system longer to run as
                     # there is one less worker. Increase crash_assumed_timer
-                    crash_assumed_timer += 60
-                    for corpus_name in corpus_names:
-                        if corpus_response_times[corpus_name] == 0:
-                            # remove "_LDA_result" from corpus_name
-                            name = corpus_name[:-11]
-                            print "Client handling corpus ", corpus_name, " crashed", it
-                            lda_object = VariationalLDA(self.corpus_dict[name], K=self.K, eta=self.config_data.eta,
-                                                        alpha=self.config_data.alpha, word_index=self.word_index,
-                                                        normalise=self.config_data.normalise)
-                            # signal client that corpus sent crashed
-                            crashed_corpus_object = ["corpus", "crashed_" + corpus_name, lda_object, new_beta]
-                            self.send_object_to_workers(crashed_corpus_object)       
+                    crash_assumed_timer += 5
+                    missing_corpora = set(corpus_names) - set(processor_names_received)
+                    for corpus_name in missing_corpora:
+                        # remove "_LDA_result" from corpus_name
+                        name = corpus_name[:-11]
+                        print "Client handling corpus ", corpus_name, " crashed", it
+                        lda_object = VariationalLDA(self.corpus_dict[name], K=self.K, eta=self.config_data.eta,
+                                                    alpha=self.config_data.alpha, word_index=self.word_index,
+                                                    normalise=self.config_data.normalise)
+                        
+                        lda_object.beta = new_beta
+                        corpus_object = ["corpus", corpus_name, lda_object]
+                        self.send_object_to_workers(corpus_object) 
+                    # signal client that corpus sent crashed      
                     self.client_crash_q.put("crash")
                     print "CRASH"
-                    time.sleep(3)
-                    # reset crash if previous iteration crashed
-                    if not self.client_crash_q.empty():
-                        self.client_crash_q.get()
+
         
         return beta_sum, iteration_execution_time
 
@@ -480,7 +487,7 @@ class Master:
         start_execution_time = time.time()
         corpus_names = self.send_corpus_objects_to_workers()
         print corpus_names
-        crash_assumed_timer = 300
+        crash_assumed_timer = 15
         new_beta = np.zeros((self.K, len(self.vocabulary)))
         it = 0
         convergence_number = 0.01
