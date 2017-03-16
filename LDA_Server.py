@@ -4,6 +4,7 @@ from multiprocessing.managers import SyncManager
 import time
 import cPickle as pickle
 import os
+import sys
 import numpy as np
 import LDA_Config
 from lda import VariationalLDA
@@ -377,7 +378,6 @@ class Master:
     # result has been gotten then assume that crash happened and send back missing
     # corpuses
     def collect_betas_from_workers(self, corpus_names, new_beta, it, crash_assumed_timer, single_threaded_LDA_timer):
-
         beta_sum = np.zeros((self.K, len(self.vocabulary)))
         count = 1
         begin_iteration_time = time.time()
@@ -399,6 +399,7 @@ class Master:
                 
                 if name in processor_names_received:  
                     print "Already received", name 
+                    sys.exit(1)
                 else:
                     print "Received " + name + " " + str(count) + "/" + str(len(corpus_names))
                     count += 1
