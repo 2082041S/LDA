@@ -188,8 +188,8 @@ class Master:
         self.reduce_vocabulary_if_needed(document_appearance_min_threshold, max_vocabulary_length)
         self.word_index = self.calculate_word_index()
         self.K = self.config_data.K
-		
-		self.manager = make_server_manager(self.config_data.host,
+        
+        self.manager = make_server_manager(self.config_data.host,
                                            self.config_data.port,
                                            self.config_data.authkey)
         self.shared_job_q = self.manager.get_job_q()
@@ -427,7 +427,7 @@ class Master:
                     first_result_time = 0
                     # if crash occured it will take system longer to run as
                     # there is one less worker. Increase crash_assumed_timer
-                    crash_assumed_timer += 5
+                    crash_assumed_timer += 60
                     missing_corpora = set(corpus_names) - set(processor_names_received)
                     for corpus_name in missing_corpora:
                         # remove "_LDA_result" from corpus_name
@@ -487,7 +487,7 @@ class Master:
         start_execution_time = time.time()
         corpus_names = self.send_corpus_objects_to_workers()
         print corpus_names
-        crash_assumed_timer = 15
+        crash_assumed_timer = 300
         new_beta = np.zeros((self.K, len(self.vocabulary)))
         it = 0
         convergence_number = 0.01
