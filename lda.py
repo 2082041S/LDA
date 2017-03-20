@@ -2,6 +2,7 @@
 import multiprocessing
 import pickle
 import time
+import sys
 
 from scipy.special import polygamma as pg
 from scipy.special import psi as psi
@@ -9,6 +10,7 @@ from scipy.special import psi as psi
 from parallel_calls import par_e_step
 import numpy as np
 
+SMALL_NUMBER = 1e-100
 
 # This is a Gibbs sampler LDA object. Don't use it. I'll probably delete it when I have time
 class LDA(object):
@@ -180,7 +182,7 @@ class VariationalLDA(object):
 		self.corpus = corpus
 		self.word_index = word_index
 		self.normalise = normalise
-		#  If the corpus exists, make the word index and the (unused?) word doc matrix
+		#  If the corpus exists, make the word index and the (unused?) word doc matrix
 		if not self.corpus == None:
 			self.n_docs = len(self.corpus)
 			if self.word_index == None:
@@ -194,7 +196,7 @@ class VariationalLDA(object):
 		
 		self.K = K
 		self.alpha = alpha
-		#  If alpha is a single value, make it into a vector
+		#  If alpha is a single value, make it into a vector
 		if type(self.alpha) == int or type(self.alpha) == float:
 			self.alpha = self.alpha*np.ones(self.K)
 		self.eta = eta # Smoothing parameter for beta
@@ -328,7 +330,7 @@ class VariationalLDA(object):
 							self.topic_metadata[topic_name_here][metadata_item] = topic_metadata[topic][metadata_item]
 				self.n_fixed_topics += 1
 
-		# Normalise
+		# Normalise
 		self.beta_matrix[:self.n_fixed_topics,:] /= self.beta_matrix[:self.n_fixed_topics,:].sum(axis=1)[:,None]
 		print "Matched {}/{} topics at prob_thresh={}".format(self.n_fixed_topics,len(topics),prob_thresh)
 
@@ -343,7 +345,7 @@ class VariationalLDA(object):
 
 	# Load the features from a Joe .csv file. Pass the file name up until the _ms1.csv or _ms2.csv
 	# these are added here
-	# The scale factor is what we multiply intensities by
+	# The scale factor is what we multiply intensities by
 	def load_features_from_csv(self,prefix,scale_factor=100.0):
 		# Load the MS1 peaks (MS1 object defined below)
 		self.ms1peaks = []
@@ -368,7 +370,7 @@ class VariationalLDA(object):
 		print "Loaded {} MS1 peaks".format(len(self.ms1peaks))
 		parent_id_list = [self.doc_metadata[name]['id'] for name in self.ms1peaks]
 
-		# Load the ms2 objects
+		# Load the ms2 objects
 		frag_file = prefix + '_ms2.csv'
 		features = []
 		self.corpus = {}
@@ -399,7 +401,7 @@ class VariationalLDA(object):
 				intensity = float(split_line[6])
 				
 				parent_id = split_line[2]
-				# Find the parent
+				# Find the parent
 				parent = self.ms1peaks[parent_id_list.index(parent_id)]
 				
 				if parent == '156.076766819657_621.074':
@@ -433,14 +435,14 @@ class VariationalLDA(object):
 	# initialise = True initialises (i.e. restarts the algorithm)
 	# This means we can run the algorithm from where it got to.
 	# First time its run, initialise has to be True
-	def run_vb(self,n_its = 1,verbose=True,initialise=True):
+	def run_vb(self,n_its = 1, e_step_its = 1, verbose=True,initialise=True):
 		if initialise:
 			print "Initialising"
 			self.init_vb()
 		print "Starting iterations"
 		for it in range(n_its):
 			start_time = time.clock()
-			diff = self.vb_step()
+			diff = self.vb_step(e_step_its)
 			end_time = time.clock()
 			self.its_performed += 1
 			estimated_finish = ((end_time - start_time)*(n_its - it)/60.0)
@@ -448,9 +450,10 @@ class VariationalLDA(object):
 				print "Iteration {} (change = {}) ({} seconds, I think I'll finish in {} minutes)".format(it,diff,end_time - start_time,estimated_finish)
 
 	# D a VB step
-	def vb_step(self):
+	def vb_step(self, e_step_its):
 		# Run an e-step
-		temp_beta = self.e_step()
+		for i in range(e_step_its):
+			temp_beta = self.e_step()
 		temp_beta += self.eta
 		# Do the normalisation in the m step
 		if self.n_fixed_topics > 0:
@@ -478,10 +481,24 @@ class VariationalLDA(object):
 			for it in range(maxit):
 				grad = M *(psi(alpha.sum()) - psi(alpha)) + g_term
 				H = -M*np.diag(pg(1,alpha)) + M*pg(1,alpha.sum())
-				alpha_new = alpha - np.dot(np.linalg.inv(H),grad)
-				if (alpha_new < 0).sum() > 0:
-					init_alpha /= 10.0
-					return self.alpha_nr(maxit=maxit,init_alpha = init_alpha)
+
+
+				# playing here....
+				z = M*pg(1,alpha.sum())
+				h = -M*pg(1,alpha)
+				c = ((grad/h).sum())/((1.0/z) + (1.0/h).sum())
+				alpha_change = (grad - c)/h
+
+
+				# alpha_new = alpha - np.dot(np.linalg.inv(H),grad)
+				alpha_new = alpha - alpha_change
+
+				pos = np.where(alpha_new <= SMALL_NUMBER)[0]
+				alpha_new[pos] = SMALL_NUMBER
+
+				# if (alpha_new < 0).sum() > 0:
+				# 	init_alpha /= 10.0
+				# 	return self.alpha_nr(maxit=maxit,init_alpha = init_alpha)
 
 				diff = np.sum(np.abs(alpha-alpha_new))
 				alpha = alpha_new
@@ -499,16 +516,21 @@ class VariationalLDA(object):
 			temp_gamma = np.zeros(self.K) + self.alpha
 			for word in self.corpus[doc]:
 				w = self.word_index[word]
-				self.phi_matrix[doc][word] = self.beta_matrix[:,w]*np.exp(psi(self.gamma_matrix[d,:])).T
+				log_phi_matrix = np.log(self.beta_matrix[:,w]) + psi(self.gamma_matrix[d,:]).T
+				# self.phi_matrix[doc][word] = self.beta_matrix[:,w]*np.exp(psi(self.gamma_matrix[d,:])).T
 				# for k in range(self.K):
 				# 	self.phi_matrix[doc][word][k] = self.beta_matrix[k,w]*np.exp(scipy.special.psi(self.gamma_matrix[d,k]))
-				self.phi_matrix[doc][word] /= self.phi_matrix[doc][word].sum()
+				log_phi_matrix = np.exp(log_phi_matrix - log_phi_matrix.max())
+				self.phi_matrix[doc][word] = log_phi_matrix/log_phi_matrix.sum()
+				# self.phi_matrix[doc][word] /= self.phi_matrix[doc][word].sum()
 				temp_gamma += self.phi_matrix[doc][word]*self.corpus[doc][word]
 				temp_beta[:,w] += self.phi_matrix[doc][word] * self.corpus[doc][word]
 			# self.phi_matrix[d,:,:] = (self.beta_matrix * self.word_matrix[d,:][None,:] * (np.exp(scipy.special.psi(self.gamma_matrix[d,:]))[:,None])).T
 			# self.phi_matrix[d,:,:] /= self.phi_matrix[d,:,:].sum(axis=1)[:,None]
 			# self.gamma_matrix[d,:] = self.alpha + self.phi_matrix[d,:,:].sum(axis=0)
 			self.gamma_matrix[d,:] = temp_gamma
+			pos = np.where(self.gamma_matrix[d,:]<SMALL_NUMBER)[0]
+			self.gamma_matrix[d,pos] = SMALL_NUMBER
 		return temp_beta
 
 	# Function to find the unique words in the corpus and assign them to indices
@@ -523,7 +545,7 @@ class VariationalLDA(object):
 		print "Found {} unique words".format(len(word_index))
 		return word_index
 
-	# Pretty sure this matrix is never used
+	# Pretty sure this matrix is never used
 	def make_doc_index(self):
 		self.doc_index = {}
 		doc_pos = 0
@@ -638,7 +660,7 @@ class VariationalLDA(object):
 		di,i = zip(*di)
 		di = list(di)
 
-		# make a reverse index for topics
+		# make a reverse index for topics
 		tp = [(topic,self.topic_index[topic]) for topic in self.topic_index]
 		tp = sorted(tp,key = lambda x: x[1])
 		reverse,_ = zip(*tp)
@@ -694,7 +716,7 @@ class MS1(object):
 	def __str__(self):
 		return self.name
 
-# TODO: comment this class!
+# TODO: comment this class!
 class MultiFileVariationalLDA(object):
 	def __init__(self,corpus_dictionary,word_index,topic_index = None,topic_metadata = None,K = 20,alpha=1,eta = 0.1,update_alpha=True):
 		self.word_index = word_index # this needs to be consistent across the instances
@@ -874,5 +896,3 @@ class SpectraSampler(object):
 				else:
 					new_spectrum[word] += 1
 		return new_spectrum
-
-
